@@ -1,0 +1,43 @@
+{
+  "name": "@aztec-app/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "NODE_OPTIONS='--max-old-space-size=8192' vite build",
+    "serve": "vite preview --port 3001"
+  },
+  "dependencies": {
+    "@aztec/accounts": "4.0.0-devnet.2-patch.1",
+    "@aztec/aztec.js": "4.0.0-devnet.2-patch.1",
+    "@aztec/stdlib": "4.0.0-devnet.2-patch.1",
+    "@aztec/wallets": "4.0.0-devnet.2-patch.1",
+    "@aztec/pxe": "4.0.0-devnet.2-patch.1",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "zustand": "5.0.9"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.10",
+    "@types/react-dom": "19.1.7",
+    "@vitejs/plugin-react": "5.0.1",
+    "assert": "2.1.0",
+    "buffer": "6.0.3",
+    "crypto-browserify": "3.12.1",
+    "process": "0.11.10",
+    "stream-browserify": "3.0.0",
+    "typescript": "5.9.3",
+    "util": "0.12.5",
+    "vite": "7.3.1",
+    "vite-plugin-node-polyfills": "0.24.0",
+    "vite-plugin-top-level-await": "1.6.0",
+    "vite-plugin-wasm": "3.5.0"
+  },
+  "config": {
+    "aztecVersion": "4.0.0-devnet.2-patch.1"
+  },
+  "resolutions": {
+    "@noble/hashes": "1.8.0"
+  }
+}

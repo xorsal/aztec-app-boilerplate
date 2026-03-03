@@ -1,0 +1,13 @@
+{
+  "name": "@aztec-app/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf ./artifacts ./target ../../target codegenCache.json",
+    "compile": "cd ../.. && aztec compile",
+    "codegen": "aztec codegen ../../target --outdir artifacts -f",
+    "build": "yarn clean && yarn compile && yarn codegen",
+    "test:nr": "cd ../.. && aztec test"
+  }
+}

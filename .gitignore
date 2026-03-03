@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+target/
+dist/
+packages/contracts/artifacts/
+packages/offchain/src/artifacts/
+codegenCache.json
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# PXE data
+pxe-*/

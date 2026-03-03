@@ -1,0 +1,32 @@
+{
+  "name": "aztec-app-boilerplate",
+  "private": true,
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "packages/contracts",
+    "packages/offchain",
+    "packages/web"
+  ],
+  "scripts": {
+    "build:contracts": "yarn workspace @aztec-app/contracts build",
+    "test:nr": "yarn workspace @aztec-app/contracts test:nr",
+    "test:js": "yarn workspace @aztec-app/offchain test:js",
+    "test": "yarn test:nr && yarn test:js",
+    "deploy": "yarn workspace @aztec-app/offchain deploy",
+    "dev": "yarn workspace @aztec-app/web dev",
+    "build:web": "yarn workspace @aztec-app/web build"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "yarn": ">=1.22.0"
+  },
+  "config": {
+    "aztecVersion": "4.0.0-devnet.2-patch.1"
+  },
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
+  "resolutions": {
+    "@noble/hashes": "1.8.0"
+  }
+}

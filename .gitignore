@@ -26,3 +26,6 @@ Thumbs.db
 
 # PXE data
 pxe-*/
+
+# Wallet LMDB data
+wallet_data_*/

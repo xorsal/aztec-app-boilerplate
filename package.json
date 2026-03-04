@@ -13,7 +13,7 @@
   "scripts": {
     "build:contracts": "yarn workspace @aztec-app/contracts build",
     "test:nr": "yarn workspace @aztec-app/contracts test:nr",
-    "test:js": "yarn workspace @aztec-app/offchain test:js",
+    "test:js": "yarn workspace @aztec-app/offchain test:js && yarn workspace @aztec-app/eip712 test:unit",
     "test": "yarn test:nr && yarn test:js",
     "deploy": "yarn workspace @aztec-app/offchain deploy",
     "dev": "yarn workspace @aztec-app/web dev",

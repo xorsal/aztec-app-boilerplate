@@ -2,18 +2,15 @@ import { create } from "zustand";
 import {
   createWalletClient,
   custom,
-  keccak256,
-  toBytes,
   type Hex,
   type WalletClient,
 } from "viem";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
+import { Fr } from "@aztec/aztec.js/fields";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
+import { AccountManager } from "@aztec/aztec.js/wallet";
 import { AztecAddress } from "@aztec/stdlib/aztec-address";
-import {
-  Eip712Account,
-  Eip712AccountEntrypoint,
-} from "@aztec-app/eip712";
+import { Eip712AccountContract } from "@aztec-app/eip712";
 import { AZTEC_NODE_URL, EIP712_CHAIN_ID } from "../config";
 import { MetaMaskEip712SigningDelegate } from "./signingDelegate";
 import {
@@ -82,30 +79,23 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         signature,
       );
 
-      // 4. Derive secret key and salt from signature
-      const signatureHash = keccak256(toBytes(signature));
-      const secretKey = Buffer.from(signatureHash.slice(2), "hex");
-      const salt = Buffer.from(
-        evmAddress.slice(2).padStart(64, "0"),
-        "hex",
-      ).slice(0, 32);
-
-      // 5. Create EIP-712 account
-      const chainId = EIP712_CHAIN_ID;
-      const eip712Account = new Eip712Account(undefined, chainId);
-
-      // 6. Create signing delegate
+      // 4. Create signing delegate (handles MetaMask EIP-712 signing)
       const signingDelegate = new MetaMaskEip712SigningDelegate(
         walletClient,
         evmAddress,
-        chainId,
+        EIP712_CHAIN_ID,
       );
 
-      // 7. Connect to Aztec node and create embedded wallet with EIP-712 entrypoint
-      const aztecNode = await createAztecNodeClient(AZTEC_NODE_URL, {});
+      // 5. Create EIP-712 account contract with signing delegate
+      const accountContract = new Eip712AccountContract(
+        publicKey.x,
+        publicKey.y,
+        signingDelegate, // AuthWitnessProvider (returns empty witnesses)
+        signingDelegate, // Eip712SigningDelegate (creates capsules)
+      );
 
-      const entrypoint = new Eip712AccountEntrypoint(signingDelegate);
-
+      // 6. Connect to Aztec node and create embedded wallet
+      const aztecNode = createAztecNodeClient(AZTEC_NODE_URL);
       const wallet = await EmbeddedWallet.create(aztecNode, {
         pxeConfig: {
           dataDirectory: "pxe-web",
@@ -113,13 +103,33 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         },
       });
 
-      // 8. Register the EIP-712 account with PXE
-      const accountAddress = await wallet.registerEcdsaSecp256k1Account(
+      // 7. Create account via AccountManager
+      const secretKey = Fr.random();
+      const accountManager = await AccountManager.create(
+        wallet,
         secretKey,
-        salt,
-        publicKey.x,
-        publicKey.y,
+        accountContract,
+        Fr.random(),
       );
+
+      // 8. Register contract with wallet's PXE
+      const instance = accountManager.getInstance();
+      const artifact = await accountManager.getAccountContract().getContractArtifact();
+      await wallet.registerContract(instance, artifact, accountManager.getSecretKey());
+
+      // 9. Patch wallet to support EIP-712 account lookups.
+      // EmbeddedWallet only supports built-in account types in getAccountFromAddress(),
+      // so we override it so send({ from: accountAddress }) finds our custom Account.
+      const eip712AccountObj = await accountManager.getAccount();
+      const origGetAccountFromAddress = (wallet as any).getAccountFromAddress.bind(wallet);
+      (wallet as any).getAccountFromAddress = async (address: AztecAddress) => {
+        if (address.equals(accountManager.address)) {
+          return eip712AccountObj;
+        }
+        return origGetAccountFromAddress(address);
+      };
+
+      const accountAddress = accountManager.address;
 
       set({
         wallet,
@@ -139,6 +149,10 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   },
 
   disconnect: () => {
+    const { wallet } = get();
+    if (wallet) {
+      wallet.stop().catch(() => {});
+    }
     set({
       wallet: null,
       address: null,

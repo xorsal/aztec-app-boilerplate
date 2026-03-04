@@ -22,16 +22,16 @@ import {
   Eip712Encoder,
   DEFAULT_APP_DOMAIN,
   TYPE_HASHES,
-} from "../../src/lib/eip712/eip712-encoder.js";
+} from "../../src/lib/eip712-encoder.js";
 import {
   Eip712Account,
   type FunctionCallInput,
-} from "../../src/lib/eip712/eip712-account.js";
+} from "../../src/lib/eip712-account.js";
 import {
   EMPTY_FUNCTION_CALL,
   DEFAULT_VERIFYING_CONTRACT,
   ACCOUNT_MAX_CALLS,
-} from "../../src/lib/eip712/eip712-types.js";
+} from "../../src/lib/eip712-types.js";
 
 // Test private key (Anvil's first account)
 const TEST_PRIVATE_KEY =

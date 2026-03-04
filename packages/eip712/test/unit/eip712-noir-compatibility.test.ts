@@ -11,13 +11,13 @@ import {
   Eip712Encoder,
   DEFAULT_APP_DOMAIN,
   TYPE_HASHES,
-} from "../../src/lib/eip712/eip712-encoder.js";
+} from "../../src/lib/eip712-encoder.js";
 import {
   EMPTY_FUNCTION_CALL,
   DEFAULT_VERIFYING_CONTRACT,
   EIP712_WITNESS_5_SLOT,
   EIP712_AUTHWIT_SLOT,
-} from "../../src/lib/eip712/eip712-types.js";
+} from "../../src/lib/eip712-types.js";
 
 /**
  * Noir constants (copied from contracts/eip712_account/src/eip712.nr and main.nr)

@@ -18,16 +18,16 @@ export const Eip712AccountContractArtifact = loadContractArtifact(Eip712AccountC
  * Type-safe interface for contract Eip712Account;
  */
 export class Eip712AccountContract extends ContractBase {
-
+  
   private constructor(
     address: AztecAddress,
     wallet: Wallet,
   ) {
     super(address, Eip712AccountContractArtifact, wallet);
   }
+  
 
-
-
+  
   /**
    * Creates a contract instance.
    * @param address - The deployed contract's address.
@@ -41,7 +41,7 @@ export class Eip712AccountContract extends ContractBase {
     return Contract.at(address, Eip712AccountContract.artifact, wallet) as Eip712AccountContract;
   }
 
-
+  
   /**
    * Creates a tx to deploy a new instance of this contract.
    */
@@ -72,9 +72,9 @@ export class Eip712AccountContract extends ContractBase {
       opts.method ?? 'constructor',
     );
   }
+  
 
-
-
+  
   /**
    * Returns this contract's artifact.
    */
@@ -88,7 +88,7 @@ export class Eip712AccountContract extends ContractBase {
   public static get artifactForPublic(): ContractArtifact {
     return loadContractArtifactForPublic(Eip712AccountContractArtifactJson as NoirCompiledContract);
   }
-
+  
 
   public static get storage(): ContractStorageLayout<'signing_public_key'> {
       return {
@@ -97,11 +97,11 @@ export class Eip712AccountContract extends ContractBase {
     }
       } as ContractStorageLayout<'signing_public_key'>;
     }
-
+    
 
   /** Type-safe wrappers for the public methods exposed by the contract. */
   public declare methods: {
-
+    
     /** constructor(signing_pub_key_x: array, signing_pub_key_y: array) */
     constructor: ((signing_pub_key_x: (bigint | number)[], signing_pub_key_y: (bigint | number)[]) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
@@ -121,5 +121,5 @@ export class Eip712AccountContract extends ContractBase {
     verify_private_authwit: ((inner_hash: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
   };
 
-
+  
 }

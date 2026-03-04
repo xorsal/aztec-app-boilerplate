@@ -757,6 +757,14 @@
   resolved "https://registry.yarnpkg.com/@aztec/noir-acvm_js/-/noir-acvm_js-4.0.0-devnet.2-patch.1.tgz#3ac027dbdc465e1d5180bcb9d0004f0c58187e18"
   integrity sha512-wXi4cqLN/5jENfJtHTg5MZSBoU1/OPbAXozWmpi6yP26rBmVQY7c4Fq0D7HwxoGgBoYfflweszM9ZEhKS8Srlg==
 
+"@aztec/noir-contracts.js@4.0.0-devnet.2-patch.1":
+  version "4.0.0-devnet.2-patch.1"
+  resolved "https://registry.yarnpkg.com/@aztec/noir-contracts.js/-/noir-contracts.js-4.0.0-devnet.2-patch.1.tgz#acbd0b4997115506da395c0a4200415678dea73e"
+  integrity sha512-BMyF++ifcnwd6ydcYJ9EmCvA1MEr0XkoAJhVImqUkYGQmGo9qXFlspQ908pz4nsfJ6Id4bz3DlReJFiuufvQAQ==
+  dependencies:
+    "@aztec/aztec.js" "4.0.0-devnet.2-patch.1"
+    tslib "^2.4.0"
+
 "@aztec/noir-noir_codegen@4.0.0-devnet.2-patch.1":
   version "4.0.0-devnet.2-patch.1"
   resolved "https://registry.yarnpkg.com/@aztec/noir-noir_codegen/-/noir-noir_codegen-4.0.0-devnet.2-patch.1.tgz#1e1419a7e58de6b3e0b12666de5325439dc7f4d7"

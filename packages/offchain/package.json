@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "test:js": "vitest run",
-    "deploy": "tsx scripts/deploy.ts",
-    "bot": "tsx src/bot/index.ts"
+    "deploy": "tsx scripts/deploy.ts"
   },
   "dependencies": {
     "@aztec/accounts": "4.0.0-devnet.2-patch.1",

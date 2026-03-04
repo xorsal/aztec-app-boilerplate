@@ -28,6 +28,7 @@ import type { Capsule } from "@aztec/stdlib/tx";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
 import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
+import { AccountManager } from "@aztec/aztec.js/wallet";
 import type { Hex } from "viem";
 
 import { Eip712AccountContract } from "../../src/accounts/Eip712AccountContract.js";
@@ -36,7 +37,7 @@ import {
   Eip712Account,
   createEip712Account,
   type FunctionCallInput,
-} from "../../src/lib/eip712/eip712-account.js";
+} from "../../src/lib/eip712-account.js";
 import {
   CounterContract,
   CounterContractArtifact,
@@ -200,13 +201,19 @@ describe("EIP-712 Counter Integration", () => {
         testProvider, // Eip712SigningDelegate (createWitnessCapsule)
       );
 
-      // Create account using EmbeddedWallet
+      // Create account using AccountManager
       const secretKey = Fr.random();
-      const accountManager = await wallet.createAccount({
-        secret: secretKey,
-        salt: Fr.random(),
-        contract: accountContract,
-      });
+      const accountManager = await AccountManager.create(
+        wallet,
+        secretKey,
+        accountContract,
+        Fr.random(),
+      );
+
+      // Register the account contract with the wallet
+      const instance = accountManager.getInstance();
+      const artifact = await accountManager.getAccountContract().getContractArtifact();
+      await wallet.registerContract(instance, artifact, accountManager.getSecretKey());
 
       // Get the address before deployment
       accountAddress = accountManager.address;

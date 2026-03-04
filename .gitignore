@@ -33,3 +33,4 @@ wallet_data_*/
 # Playwright
 test-results/
 playwright-report/
+pxe_data_*

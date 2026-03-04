@@ -1,15 +1,26 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useAztecWallet } from "../wallet/useAztecWallet";
 import { CONTRACT_ADDRESS } from "../config";
 import { AztecAddress } from "@aztec/stdlib/aztec-address";
 import { CounterContract } from "../../../contracts/artifacts/Counter.js";
 
 export function CounterDisplay() {
-  const { wallet, address, isConnected } = useAztecWallet();
+  const { wallet, address, signingDelegate, isConnected } = useAztecWallet();
   const [counter, setCounter] = useState<bigint | null>(null);
   const [loading, setLoading] = useState(false);
   const [incrementing, setIncrementing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Register Counter artifact with signing delegate for readable EIP-712 signing
+  useEffect(() => {
+    if (signingDelegate && CONTRACT_ADDRESS) {
+      const contractAddress = AztecAddress.fromString(CONTRACT_ADDRESS);
+      signingDelegate.registerContractArtifact(
+        contractAddress,
+        CounterContract.artifact,
+      );
+    }
+  }, [signingDelegate]);
 
   const getContract = useCallback(async () => {
     if (!wallet || !CONTRACT_ADDRESS) return null;
@@ -80,7 +91,7 @@ export function CounterDisplay() {
       <h2 style={styles.title}>Counter</h2>
 
       <div style={styles.value}>
-        {counter !== null ? counter.toString() : "—"}
+        {counter !== null ? counter.toString() : "\u2014"}
       </div>
 
       <div style={styles.actions}>

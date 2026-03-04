@@ -1,16 +1,27 @@
 import { useAztecWallet } from "../wallet/useAztecWallet";
 
 export function ConnectButton() {
-  const { isConnected, isConnecting, address, error, connect, disconnect } =
+  const { isConnected, isConnecting, address, evmAddress, error, connect, disconnect } =
     useAztecWallet();
 
   if (isConnected && address) {
-    const shortAddr = address.toString().slice(0, 10) + "...";
+    const shortAztec = address.toString().slice(0, 10) + "...";
+    const shortEvm = evmAddress
+      ? evmAddress.slice(0, 6) + "..." + evmAddress.slice(-4)
+      : null;
+
     return (
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-        <code style={{ fontSize: "0.875rem", color: "var(--text-muted)" }}>
-          {shortAddr}
-        </code>
+        <div style={{ textAlign: "right" }}>
+          <code style={{ fontSize: "0.875rem", color: "var(--text-muted)", display: "block" }}>
+            {shortAztec}
+          </code>
+          {shortEvm && (
+            <code style={{ fontSize: "0.75rem", color: "var(--text-muted)", opacity: 0.7 }}>
+              {shortEvm}
+            </code>
+          )}
+        </div>
         <button
           onClick={disconnect}
           style={{
@@ -41,7 +52,7 @@ export function ConnectButton() {
           opacity: isConnecting ? 0.7 : 1,
         }}
       >
-        {isConnecting ? "Connecting..." : "Connect Wallet"}
+        {isConnecting ? "Connecting..." : "Connect MetaMask"}
       </button>
       {error && (
         <p style={{ color: "var(--error)", fontSize: "0.875rem", marginTop: "0.5rem" }}>

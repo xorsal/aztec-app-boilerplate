@@ -6,7 +6,6 @@
   "scripts": {
     "test:js": "vitest run",
     "deploy": "tsx scripts/deploy.ts",
-    "sandbox:start": "node --experimental-transform-types scripts/start-sandbox.ts",
     "bot": "tsx src/bot/index.ts"
   },
   "dependencies": {

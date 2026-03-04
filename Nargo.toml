@@ -1,4 +1,5 @@
 [workspace]
 members = [
     "packages/contracts/counter",
+    "packages/contracts/eip712_contract",
 ]

@@ -210,10 +210,22 @@ describe("EIP-712 Counter Integration", () => {
         Fr.random(),
       );
 
-      // Register the account contract with the wallet
+      // Register the account contract with the wallet's PXE
       const instance = accountManager.getInstance();
       const artifact = await accountManager.getAccountContract().getContractArtifact();
       await wallet.registerContract(instance, artifact, accountManager.getSecretKey());
+
+      // Patch wallet to support EIP-712 account lookups.
+      // EmbeddedWallet only supports built-in account types in getAccountFromAddress(),
+      // so we override it so send({ from: accountAddress }) finds our custom Account.
+      const eip712AccountObj = await accountManager.getAccount();
+      const origGetAccountFromAddress = (wallet as any).getAccountFromAddress.bind(wallet);
+      (wallet as any).getAccountFromAddress = async (address: AztecAddress) => {
+        if (address.equals(accountManager.address)) {
+          return eip712AccountObj;
+        }
+        return origGetAccountFromAddress(address);
+      };
 
       // Get the address before deployment
       accountAddress = accountManager.address;

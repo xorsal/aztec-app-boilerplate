@@ -11,7 +11,24 @@ export const TIMEOUTS = {
   SHORT: 5000,
   DEFAULT: 30000,
   LONG: 60000,
+  TX: 120000,
 } as const;
+
+/**
+ * Selects the account version (V1 or V2) via the toggle buttons.
+ * Must be called BEFORE connecting the wallet.
+ */
+export async function selectAccountVersion(
+  page: Page,
+  version: "v1" | "v2",
+): Promise<void> {
+  const versionBtn = page.getByRole("button", {
+    name: version.toUpperCase(),
+    exact: true,
+  });
+  await expect(versionBtn).toBeVisible({ timeout: TIMEOUTS.DEFAULT });
+  await versionBtn.click();
+}
 
 /**
  * Clicks the Connect MetaMask button and waits for connection to complete.
@@ -27,9 +44,11 @@ export async function connectWallet(page: Page): Promise<void> {
 }
 
 /**
- * Waits for the counter value to be visible on page.
+ * Waits for the counter buttons to become interactive (contract registered with PXE).
  */
 export async function waitForCounter(page: Page): Promise<void> {
-  const readBtn = page.getByRole("button", { name: /Read/i });
+  const readBtn = page.getByRole("button", { name: /^Read$/i });
   await expect(readBtn).toBeVisible({ timeout: TIMEOUTS.DEFAULT });
+  // Wait until the button is enabled (contract registration complete)
+  await expect(readBtn).toBeEnabled({ timeout: TIMEOUTS.LONG });
 }

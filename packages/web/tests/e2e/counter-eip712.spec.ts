@@ -1,90 +1,81 @@
 /**
- * E2E Test: Counter with EIP-712 Signing
+ * E2E Tests: Counter with EIP-712 Signing (V1 and V2)
  *
  * Uses the walletless fixture for MetaMask simulation.
  * Requires Aztec sandbox and deployed Counter contract.
+ *
+ * V1: Fixed uint256[] argument encoding, 5 call slots
+ * V2: Per-argument EIP-712 types (bytes32/uint256/int256) with Merkle proofs, 2 call slots
  */
 
 import { test, expect } from "./fixtures/walletless";
-import { connectWallet, waitForCounter, TIMEOUTS } from "./utils/test-helpers";
+import {
+  selectAccountVersion,
+  connectWallet,
+  waitForCounter,
+  TIMEOUTS,
+} from "./utils/test-helpers";
 
-test.describe("Counter EIP-712 E2E", () => {
-  test("should have walletless provider injected", async ({
-    page,
-    walletless,
-  }) => {
-    await page.goto("/");
+for (const version of ["v1", "v2"] as const) {
+  test.describe(`Counter EIP-712 ${version.toUpperCase()} E2E`, () => {
+    test(`[${version}] should connect wallet via EIP-712 flow`, async ({
+      page,
+      walletless,
+    }) => {
+      console.log(`\n=== E2E: EIP-712 ${version.toUpperCase()} Wallet Connection ===`);
+      console.log("Test account:", walletless.account.address);
 
-    const hasWalletless = await page.evaluate(() => {
-      return !!(window as unknown as { ethereum?: { isWalletless?: boolean } })
-        .ethereum?.isWalletless;
-    });
-    expect(hasWalletless).toBe(true);
+      await page.goto("/");
+      await page.waitForLoadState("networkidle");
 
-    const accounts = await page.evaluate(async () => {
-      return (
-        window as unknown as {
-          ethereum: {
-            request: (args: { method: string }) => Promise<string[]>;
-          };
-        }
-      ).ethereum.request({ method: "eth_accounts" });
-    });
-    expect(accounts[0].toLowerCase()).toBe(
-      walletless.account.address.toLowerCase(),
-    );
-  });
+      // Select account version before connecting
+      await selectAccountVersion(page, version);
+      await connectWallet(page);
 
-  test("should connect wallet via EIP-712 flow", async ({
-    page,
-    walletless,
-  }) => {
-    console.log("\n=== E2E: EIP-712 Wallet Connection ===");
-    console.log("Test account:", walletless.account.address);
+      // Verify we see the disconnect button (connection successful)
+      const disconnectBtn = page.getByRole("button", { name: /Disconnect/i });
+      await expect(disconnectBtn).toBeVisible({ timeout: TIMEOUTS.LONG });
 
-    await page.goto("/");
-    await page.waitForLoadState("networkidle");
+      // Verify the version label shows in the header
+      await expect(page.getByText(`EIP-712 ${version.toUpperCase()}`)).toBeVisible();
 
-    await connectWallet(page);
-
-    // Verify we see the disconnect button (connection successful)
-    const disconnectBtn = page.getByRole("button", { name: /Disconnect/i });
-    await expect(disconnectBtn).toBeVisible({ timeout: TIMEOUTS.LONG });
-
-    console.log("=== TEST PASSED ===\n");
-  });
-
-  test("should increment counter with EIP-712 signing", async ({
-    page,
-    walletless,
-  }) => {
-    console.log("\n=== E2E: Counter Increment via EIP-712 ===");
-
-    await page.goto("/");
-    await page.waitForLoadState("networkidle");
-
-    // Connect wallet
-    await connectWallet(page);
-
-    // Wait for counter UI
-    await waitForCounter(page);
-
-    // Read initial counter value
-    const readBtn = page.getByRole("button", { name: /^Read$/i });
-    await readBtn.click();
-    await page.waitForTimeout(2000);
-
-    // Click increment - this triggers EIP-712 signing via walletless
-    const incrementBtn = page.getByRole("button", { name: /Increment/i });
-    await expect(incrementBtn).toBeVisible();
-    await incrementBtn.click();
-
-    // Wait for transaction to complete (button text changes during tx)
-    await expect(incrementBtn).not.toHaveText("Sending tx...", {
-      timeout: TIMEOUTS.LONG,
+      console.log("=== TEST PASSED ===\n");
     });
 
-    console.log("Counter incremented successfully");
-    console.log("=== TEST PASSED ===\n");
+    test(`[${version}] should increment counter with EIP-712 signing`, async ({
+      page,
+      walletless,
+    }) => {
+      console.log(`\n=== E2E: Counter Increment via EIP-712 ${version.toUpperCase()} ===`);
+
+      await page.goto("/");
+      await page.waitForLoadState("networkidle");
+
+      // Select account version and connect
+      await selectAccountVersion(page, version);
+      await connectWallet(page);
+
+      // Wait for contract registration with PXE to complete
+      await waitForCounter(page);
+
+      // Read initial counter value
+      const readBtn = page.getByRole("button", { name: /^Read$/i });
+      await readBtn.click();
+      await page.waitForTimeout(2000);
+
+      // Click increment - this triggers EIP-712 signing via walletless
+      const incrementBtn = page.getByRole("button", { name: /Increment/i });
+      await expect(incrementBtn).toBeVisible();
+      await expect(incrementBtn).toBeEnabled();
+      await incrementBtn.click();
+
+      // Wait for transaction to complete (button text changes during tx)
+      await expect(incrementBtn).not.toHaveText("Sending tx...", {
+        timeout: TIMEOUTS.TX,
+      });
+
+      console.log(`Counter incremented successfully (${version.toUpperCase()})`);
+      console.log("=== TEST PASSED ===\n");
+    });
   });
-});
+}

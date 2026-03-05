@@ -1,26 +1,42 @@
 import { useState, useCallback, useEffect } from "react";
 import { useAztecWallet } from "../wallet/useAztecWallet";
-import { CONTRACT_ADDRESS } from "../config";
+import { CONTRACT_ADDRESS, AZTEC_NODE_URL } from "../config";
 import { AztecAddress } from "@aztec/stdlib/aztec-address";
+import { createAztecNodeClient } from "@aztec/aztec.js/node";
+import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
 import { CounterContract } from "../../../contracts/artifacts/Counter.js";
 
 export function CounterDisplay() {
-  const { wallet, address, signingDelegate, isConnected } = useAztecWallet();
+  const { wallet, address, sponsoredFpcAddress, isConnected, registerContractArtifact } = useAztecWallet();
   const [counter, setCounter] = useState<bigint | null>(null);
   const [loading, setLoading] = useState(false);
   const [incrementing, setIncrementing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Register Counter artifact with signing delegate for readable EIP-712 signing
+  // Register Counter contract with PXE and for EIP-712 signing
   useEffect(() => {
-    if (signingDelegate && CONTRACT_ADDRESS) {
-      const contractAddress = AztecAddress.fromString(CONTRACT_ADDRESS);
-      signingDelegate.registerContractArtifact(
-        contractAddress,
-        CounterContract.artifact,
-      );
-    }
-  }, [signingDelegate]);
+    if (!wallet || !isConnected || !CONTRACT_ADDRESS) return;
+    const contractAddress = AztecAddress.fromString(CONTRACT_ADDRESS);
+
+    // Register artifact for readable EIP-712 signing in MetaMask
+    registerContractArtifact(contractAddress, CounterContract.artifact);
+
+    // Register with PXE so it knows about this contract (fetch instance from node)
+    (async () => {
+      try {
+        const aztecNode = createAztecNodeClient(AZTEC_NODE_URL);
+        const instance = await aztecNode.getContract(contractAddress);
+        if (instance) {
+          await wallet.registerContract(instance, CounterContract.artifact);
+          console.log("[counter] Contract registered with PXE");
+        } else {
+          console.warn("[counter] Contract not found on-chain at", CONTRACT_ADDRESS);
+        }
+      } catch (err: any) {
+        console.warn("[counter] Failed to register contract with PXE:", err.message);
+      }
+    })();
+  }, [wallet, isConnected]);
 
   const getContract = useCallback(async () => {
     if (!wallet || !CONTRACT_ADDRESS) return null;
@@ -53,7 +69,12 @@ export function CounterDisplay() {
     try {
       const contract = await getContract();
       if (!contract) throw new Error("Contract not available");
-      await contract.methods.increment().send({ from: address });
+      await contract.methods.increment().send({
+        from: address,
+        fee: sponsoredFpcAddress
+          ? { paymentMethod: new SponsoredFeePaymentMethod(sponsoredFpcAddress) }
+          : undefined,
+      });
       // Re-fetch after increment
       const value = await contract.methods
         .get_counter()

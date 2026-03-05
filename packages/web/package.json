@@ -11,7 +11,9 @@
   "dependencies": {
     "@aztec/accounts": "4.0.0-devnet.2-patch.1",
     "@aztec/aztec.js": "4.0.0-devnet.2-patch.1",
+    "@aztec/constants": "4.0.0-devnet.2-patch.1",
     "@aztec/entrypoints": "4.0.0-devnet.2-patch.1",
+    "@aztec/noir-contracts.js": "4.0.0-devnet.2-patch.1",
     "@aztec/stdlib": "4.0.0-devnet.2-patch.1",
     "@aztec/wallets": "4.0.0-devnet.2-patch.1",
     "@aztec/pxe": "4.0.0-devnet.2-patch.1",
@@ -35,9 +37,7 @@
     "typescript": "5.9.3",
     "util": "0.12.5",
     "vite": "7.3.1",
-    "vite-plugin-node-polyfills": "0.24.0",
-    "vite-plugin-top-level-await": "1.6.0",
-    "vite-plugin-wasm": "3.5.0"
+    "vite-plugin-node-polyfills": "0.24.0"
   },
   "config": {
     "aztecVersion": "4.0.0-devnet.2-patch.1"

@@ -2,4 +2,5 @@
 members = [
     "packages/contracts/counter",
     "packages/contracts/eip712_contract",
+    "packages/contracts/eip712_v2_contract",
 ]

@@ -10,12 +10,13 @@ export function useAztecWallet() {
     address,
     evmAddress,
     walletClient,
-    signingDelegate,
+    sponsoredFpcAddress,
     isConnecting,
     isConnected,
     error,
     connect,
     disconnect,
+    registerContractArtifact,
   } = useWalletStore();
 
   return {
@@ -23,11 +24,12 @@ export function useAztecWallet() {
     address,
     evmAddress,
     walletClient,
-    signingDelegate,
+    sponsoredFpcAddress,
     isConnecting,
     isConnected,
     error,
     connect,
     disconnect,
+    registerContractArtifact,
   };
 }

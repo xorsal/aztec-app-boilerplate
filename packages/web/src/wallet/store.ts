@@ -7,9 +7,15 @@ import {
 } from "viem";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { Fr } from "@aztec/aztec.js/fields";
+import { getContractInstanceFromInstantiationParams } from "@aztec/aztec.js/contracts";
+import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { AccountManager } from "@aztec/aztec.js/wallet";
 import { AztecAddress } from "@aztec/stdlib/aztec-address";
+import { TxStatus } from "@aztec/stdlib/tx";
+import { SPONSORED_FPC_SALT } from "@aztec/constants";
+import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
+import type { ContractArtifact } from "@aztec/stdlib/abi";
 import { Eip712AccountContract } from "@aztec-app/eip712";
 import { AZTEC_NODE_URL, EIP712_CHAIN_ID } from "../config";
 import { MetaMaskEip712SigningDelegate } from "./signingDelegate";
@@ -23,12 +29,15 @@ interface WalletState {
   address: AztecAddress | null;
   evmAddress: Hex | null;
   walletClient: WalletClient | null;
-  signingDelegate: MetaMaskEip712SigningDelegate | null;
+  sponsoredFpcAddress: AztecAddress | null;
   isConnecting: boolean;
+  isDeploying: boolean;
   isConnected: boolean;
   error: string | null;
   connect: () => Promise<void>;
   disconnect: () => void;
+  /** Register a contract artifact for human-readable EIP-712 signing. */
+  registerContractArtifact: (address: AztecAddress, artifact: ContractArtifact) => void;
 }
 
 export const useWalletStore = create<WalletState>((set, get) => ({
@@ -36,10 +45,15 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   address: null,
   evmAddress: null,
   walletClient: null,
-  signingDelegate: null,
+  sponsoredFpcAddress: null,
   isConnecting: false,
+  isDeploying: false,
   isConnected: false,
   error: null,
+
+  registerContractArtifact: () => {
+    console.warn("[wallet] Cannot register artifact: wallet not connected");
+  },
 
   connect: async () => {
     if (get().isConnecting || get().isConnected) return;
@@ -99,6 +113,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       const wallet = await EmbeddedWallet.create(aztecNode, {
         pxeConfig: {
           dataDirectory: "pxe-web",
+          dataStoreMapSizeKb: 5e5, // 500MB (default is 128GB)
           proverEnabled: false,
         },
       });
@@ -131,15 +146,61 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
       const accountAddress = accountManager.address;
 
+      // 10. Register SponsoredFPC for fee payment
+      const sponsoredFPCInstance =
+        await getContractInstanceFromInstantiationParams(
+          SponsoredFPCContractArtifact,
+          { salt: new Fr(SPONSORED_FPC_SALT) },
+        );
+      await wallet.registerContract(
+        sponsoredFPCInstance,
+        SponsoredFPCContractArtifact,
+      );
+      signingDelegate.registerContractArtifact(
+        sponsoredFPCInstance.address,
+        SponsoredFPCContractArtifact,
+      );
+
       set({
         wallet,
         address: accountAddress,
         evmAddress,
         walletClient,
-        signingDelegate,
+        sponsoredFpcAddress: sponsoredFPCInstance.address,
         isConnected: true,
         isConnecting: false,
+        isDeploying: true,
+        registerContractArtifact: (addr: AztecAddress, artifact: ContractArtifact) => {
+          signingDelegate.registerContractArtifact(addr, artifact);
+        },
       });
+
+      // 11. Deploy account contract if not already deployed
+      try {
+        const metadata = await wallet.getContractMetadata(accountAddress);
+        if (!metadata.isContractInitialized) {
+          console.log("[wallet] Deploying EIP-712 account...");
+          const deployMethod = await accountManager.getDeployMethod();
+          const paymentMethod = new SponsoredFeePaymentMethod(
+            sponsoredFPCInstance.address,
+          );
+          await deployMethod.send({
+            from: AztecAddress.ZERO,
+            fee: { paymentMethod },
+            skipClassPublication: true,
+            skipInstancePublication: true,
+            wait: { timeout: 120, waitForStatus: TxStatus.PROPOSED },
+          });
+          console.log("[wallet] Account deployed successfully");
+        } else {
+          console.log("[wallet] Account already deployed");
+        }
+      } catch (deployError: any) {
+        console.warn("[wallet] Account deployment failed:", deployError.message);
+        // Non-fatal: account is registered locally, deployment can be retried
+      } finally {
+        set({ isDeploying: false });
+      }
     } catch (error: any) {
       set({
         error: error.message || "Failed to connect",
@@ -158,9 +219,13 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       address: null,
       evmAddress: null,
       walletClient: null,
-      signingDelegate: null,
+      sponsoredFpcAddress: null,
       isConnected: false,
+      isDeploying: false,
       error: null,
+      registerContractArtifact: () => {
+        console.warn("[wallet] Cannot register artifact: wallet not connected");
+      },
     });
   },
 }));

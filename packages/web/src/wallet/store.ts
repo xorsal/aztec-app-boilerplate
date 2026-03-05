@@ -16,13 +16,16 @@ import { TxStatus } from "@aztec/stdlib/tx";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
 import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
 import type { ContractArtifact } from "@aztec/stdlib/abi";
-import { Eip712AccountContract } from "@aztec-app/eip712";
+import { Eip712AccountContract, Eip712AccountContractV2 } from "@aztec-app/eip712";
 import { AZTEC_NODE_URL, EIP712_CHAIN_ID } from "../config";
 import { MetaMaskEip712SigningDelegate } from "./signingDelegate";
+import { MetaMaskEip712SigningDelegateV2 } from "./signingDelegateV2";
 import {
   recoverPublicKeyFromSignature,
   getPublicKeyRecoveryMessage,
 } from "./evmPublicKeyRecovery";
+
+type AccountVersion = 'v1' | 'v2';
 
 interface WalletState {
   wallet: EmbeddedWallet | null;
@@ -30,10 +33,12 @@ interface WalletState {
   evmAddress: Hex | null;
   walletClient: WalletClient | null;
   sponsoredFpcAddress: AztecAddress | null;
+  accountVersion: AccountVersion;
   isConnecting: boolean;
   isDeploying: boolean;
   isConnected: boolean;
   error: string | null;
+  setAccountVersion: (version: AccountVersion) => void;
   connect: () => Promise<void>;
   disconnect: () => void;
   /** Register a contract artifact for human-readable EIP-712 signing. */
@@ -46,10 +51,16 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   evmAddress: null,
   walletClient: null,
   sponsoredFpcAddress: null,
+  accountVersion: 'v1' as AccountVersion,
   isConnecting: false,
   isDeploying: false,
   isConnected: false,
   error: null,
+
+  setAccountVersion: (version: AccountVersion) => {
+    if (get().isConnected) return; // Cannot change while connected
+    set({ accountVersion: version });
+  },
 
   registerContractArtifact: () => {
     console.warn("[wallet] Cannot register artifact: wallet not connected");
@@ -94,19 +105,15 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       );
 
       // 4. Create signing delegate (handles MetaMask EIP-712 signing)
-      const signingDelegate = new MetaMaskEip712SigningDelegate(
-        walletClient,
-        evmAddress,
-        EIP712_CHAIN_ID,
-      );
+      const version = get().accountVersion;
+      const signingDelegate = version === 'v2'
+        ? new MetaMaskEip712SigningDelegateV2(walletClient, evmAddress, EIP712_CHAIN_ID)
+        : new MetaMaskEip712SigningDelegate(walletClient, evmAddress, EIP712_CHAIN_ID);
 
       // 5. Create EIP-712 account contract with signing delegate
-      const accountContract = new Eip712AccountContract(
-        publicKey.x,
-        publicKey.y,
-        signingDelegate, // AuthWitnessProvider (returns empty witnesses)
-        signingDelegate, // Eip712SigningDelegate (creates capsules)
-      );
+      const accountContract = version === 'v2'
+        ? new Eip712AccountContractV2(publicKey.x, publicKey.y, signingDelegate, signingDelegate as MetaMaskEip712SigningDelegateV2)
+        : new Eip712AccountContract(publicKey.x, publicKey.y, signingDelegate, signingDelegate as MetaMaskEip712SigningDelegate);
 
       // 6. Connect to Aztec node and create embedded wallet
       const aztecNode = createAztecNodeClient(AZTEC_NODE_URL);
@@ -179,7 +186,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       try {
         const metadata = await wallet.getContractMetadata(accountAddress);
         if (!metadata.isContractInitialized) {
-          console.log("[wallet] Deploying EIP-712 account...");
+          console.log(`[wallet] Deploying EIP-712 ${version} account...`);
           const deployMethod = await accountManager.getDeployMethod();
           const paymentMethod = new SponsoredFeePaymentMethod(
             sponsoredFPCInstance.address,
@@ -210,7 +217,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   },
 
   disconnect: () => {
-    const { wallet } = get();
+    const { wallet, accountVersion } = get();
     if (wallet) {
       wallet.stop().catch(() => {});
     }
@@ -220,6 +227,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       evmAddress: null,
       walletClient: null,
       sponsoredFpcAddress: null,
+      accountVersion,
       isConnected: false,
       isDeploying: false,
       error: null,

@@ -1,10 +1,7 @@
 use crate::eip712_v2::{
     ACCOUNT_DATA_DEF, ACCOUNT_DATA_DEF_LEN,
     ACCOUNT_DATA_TYPE_HASH, TX_METADATA_TYPE_HASH,
-    FC1_PRIMARY, FC1_PRIMARY_LEN,
-    ENTRYPOINT_AUTH_PRIMARY_LEN, ACCOUNT_DATA_DEF_LEN as AD_LEN,
-    FC1_PRIMARY_LEN as FC1_LEN, FC2_PRIMARY_LEN as FC2_LEN,
-    TX_METADATA_DEF_LEN as TM_LEN,
+    FC_PRIMARY, FC_PRIMARY_LEN,
     MAX_ARGS_TYPE_STRING_LEN, MAX_SERIALIZED_ARGS, MAX_SIGNATURE_SIZE,
     compute_type_hash, type_hash_to_field, hash_string, field_to_bytes32,
     hash_struct_arguments, hash_struct_account_data, hash_struct_tx_metadata,
@@ -230,30 +227,31 @@ fn test_field_to_bytes32_0x1234() {
 
 #[test]
 fn test_build_encode_type_fc() {
-    // FC1_PRIMARY + "Arguments1(bytes32 argument1)" = 124 + 29 = 153 bytes
+    // FC_PRIMARY + "Arguments(bytes32 argument1)" = 122 + 28 = 150 bytes
     let mut args_type_str: [u8; MAX_ARGS_TYPE_STRING_LEN] = [0; MAX_ARGS_TYPE_STRING_LEN];
-    let args1_bytes: [u8; 29] = [
-        0x41, 0x72, 0x67, 0x75, 0x6d, 0x65, 0x6e, 0x74, 0x73, 0x31, 0x28, 0x62,
-        0x79, 0x74, 0x65, 0x73, 0x33, 0x32, 0x20, 0x61, 0x72, 0x67, 0x75, 0x6d,
-        0x65, 0x6e, 0x74, 0x31, 0x29,
+    // "Arguments(bytes32 argument1)" = 28 bytes
+    let args_bytes: [u8; 28] = [
+        0x41, 0x72, 0x67, 0x75, 0x6d, 0x65, 0x6e, 0x74, 0x73, 0x28, 0x62, 0x79,
+        0x74, 0x65, 0x73, 0x33, 0x32, 0x20, 0x61, 0x72, 0x67, 0x75, 0x6d, 0x65,
+        0x6e, 0x74, 0x31, 0x29,
     ];
-    for i in 0..29 {
-        args_type_str[i] = args1_bytes[i];
+    for i in 0..28 {
+        args_type_str[i] = args_bytes[i];
     }
 
-    let (result, len) = build_encode_type_fc(FC1_PRIMARY, FC1_PRIMARY_LEN, args_type_str, 29);
+    let (result, len) = build_encode_type_fc(args_type_str, 28);
 
-    assert(len == 153, "build_encode_type_fc length should be 153");
+    assert(len == 150, "build_encode_type_fc length should be 150");
 
-    // Verify first part is FC1_PRIMARY
-    for i in 0..FC1_PRIMARY_LEN {
-        assert(result[i] == FC1_PRIMARY[i], "FC1_PRIMARY bytes mismatch");
+    // Verify first part is FC_PRIMARY
+    for i in 0..FC_PRIMARY_LEN {
+        assert(result[i] == FC_PRIMARY[i], "FC_PRIMARY bytes mismatch");
     }
 
-    // Verify second part is args1 definition
-    for i in 0..29 {
+    // Verify second part is args definition
+    for i in 0..28 {
         assert(
-            result[FC1_PRIMARY_LEN + i] == args1_bytes[i],
+            result[FC_PRIMARY_LEN + i] == args_bytes[i],
             "args type string bytes mismatch in encode_type_fc",
         );
     }
@@ -265,39 +263,28 @@ fn test_build_encode_type_fc() {
 
 #[test]
 fn test_build_encode_type_entrypoint() {
-    // args1_def = "Arguments1(bytes32 argument1)" (29 bytes)
-    let mut args1_def: [u8; MAX_ARGS_TYPE_STRING_LEN] = [0; MAX_ARGS_TYPE_STRING_LEN];
-    let a1: [u8; 29] = [
-        0x41, 0x72, 0x67, 0x75, 0x6d, 0x65, 0x6e, 0x74, 0x73, 0x31, 0x28, 0x62,
-        0x79, 0x74, 0x65, 0x73, 0x33, 0x32, 0x20, 0x61, 0x72, 0x67, 0x75, 0x6d,
-        0x65, 0x6e, 0x74, 0x31, 0x29,
+    // args_def = "Arguments(bytes32 argument1)" (28 bytes)
+    let mut args_def: [u8; MAX_ARGS_TYPE_STRING_LEN] = [0; MAX_ARGS_TYPE_STRING_LEN];
+    let a: [u8; 28] = [
+        0x41, 0x72, 0x67, 0x75, 0x6d, 0x65, 0x6e, 0x74, 0x73, 0x28, 0x62, 0x79,
+        0x74, 0x65, 0x73, 0x33, 0x32, 0x20, 0x61, 0x72, 0x67, 0x75, 0x6d, 0x65,
+        0x6e, 0x74, 0x31, 0x29,
     ];
-    for i in 0..29 {
-        args1_def[i] = a1[i];
+    for i in 0..28 {
+        args_def[i] = a[i];
     }
 
-    // args2_def = "Arguments2(uint256 argument1)" (29 bytes)
-    let mut args2_def: [u8; MAX_ARGS_TYPE_STRING_LEN] = [0; MAX_ARGS_TYPE_STRING_LEN];
-    let a2: [u8; 29] = [
-        0x41, 0x72, 0x67, 0x75, 0x6d, 0x65, 0x6e, 0x74, 0x73, 0x32, 0x28, 0x75,
-        0x69, 0x6e, 0x74, 0x32, 0x35, 0x36, 0x20, 0x61, 0x72, 0x67, 0x75, 0x6d,
-        0x65, 0x6e, 0x74, 0x31, 0x29,
-    ];
-    for i in 0..29 {
-        args2_def[i] = a2[i];
-    }
+    let (result, len) = build_encode_type_entrypoint(args_def, 28);
 
-    let (result, len) = build_encode_type_entrypoint(args1_def, 29, args2_def, 29);
-
-    // Expected length: 126 + 61 + 29 + 29 + 124 + 124 + 67 = 560
-    assert(len == 560, "build_encode_type_entrypoint length should be 560");
+    // Expected length: 178 + 61 + 28 + 122 + 67 = 456
+    assert(len == 456, "build_encode_type_entrypoint length should be 456");
 
     // Verify the result hashes to the expected type_hash
     let type_hash = keccak256::keccak256(result, len);
     let expected_hash: [u8; 32] = [
-        0x2c, 0x2b, 0xc6, 0x7a, 0x94, 0x93, 0x00, 0xba, 0x41, 0x3d, 0x93, 0x7a,
-        0x98, 0xde, 0x0f, 0x81, 0xe6, 0x00, 0x5f, 0x95, 0x3b, 0x37, 0x58, 0x14,
-        0xb5, 0x44, 0x9e, 0xa5, 0xea, 0x55, 0xb6, 0x43,
+        0xf5, 0xf3, 0x52, 0xbe, 0xe5, 0xbf, 0xa8, 0x89, 0xe7, 0x5c, 0xf3, 0xd8,
+        0xa5, 0xaf, 0xdc, 0x3d, 0x69, 0x60, 0x35, 0x3d, 0x04, 0x71, 0x5a, 0x15,
+        0xeb, 0xcb, 0x71, 0x93, 0x53, 0x7a, 0xaa, 0xd7,
     ];
     assert(type_hash == expected_hash, "entrypoint encode_type hash mismatch");
 }

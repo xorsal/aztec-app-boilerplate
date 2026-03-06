@@ -108,7 +108,7 @@ describe("Eip712AccountV2", () => {
       expect(capsule.contractAddress.equals(contractAddress)).toBe(true);
     });
 
-    it("should serialize to 143 fields", async () => {
+    it("should serialize to 175 fields", async () => {
       const account = new Eip712AccountV2(TEST_PRIVATE_KEY);
       const contractAddress = AztecAddress.fromBigInt(999n);
       const capsule = await account.createWitnessCapsule2(
@@ -117,7 +117,7 @@ describe("Eip712AccountV2", () => {
         contractAddress,
       );
 
-      expect(capsule.data).toHaveLength(143);
+      expect(capsule.data).toHaveLength(175);
     });
 
     it("should handle single function call", async () => {
@@ -135,7 +135,7 @@ describe("Eip712AccountV2", () => {
         contractAddress,
       );
 
-      expect(capsule.data).toHaveLength(143);
+      expect(capsule.data).toHaveLength(175);
     });
 
     it("should handle two function calls", async () => {
@@ -161,10 +161,10 @@ describe("Eip712AccountV2", () => {
         contractAddress,
       );
 
-      expect(capsule.data).toHaveLength(143);
+      expect(capsule.data).toHaveLength(175);
     });
 
-    it("should throw if more than 2 calls", async () => {
+    it("should throw if more than 4 calls", async () => {
       const account = new Eip712AccountV2(TEST_PRIVATE_KEY);
       const contractAddress = AztecAddress.fromBigInt(999n);
       const calls: FunctionCallInputV2[] = [
@@ -186,11 +186,23 @@ describe("Eip712AccountV2", () => {
           args: [],
           argTypes: [],
         },
+        {
+          targetAddress: 4n,
+          functionSignature: "func4()",
+          args: [],
+          argTypes: [],
+        },
+        {
+          targetAddress: 5n,
+          functionSignature: "func5()",
+          args: [],
+          argTypes: [],
+        },
       ];
 
       await expect(
         account.createWitnessCapsule2(calls, 0n, contractAddress),
-      ).rejects.toThrow("Too many calls: 3 > 2");
+      ).rejects.toThrow("Too many calls: 5 > 4");
     });
   });
 

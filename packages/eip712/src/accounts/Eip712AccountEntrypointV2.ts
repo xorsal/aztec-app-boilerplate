@@ -1,7 +1,7 @@
 /**
  * EIP-712 V2 Account Entrypoint
  *
- * V2 entrypoint supporting 2 calls (instead of V1's 5) with variable argument types.
+ * V2 entrypoint supporting 4 calls with unified FunctionCall→Arguments type.
  * The signing delegate creates capsules with Merkle proofs for type whitelist verification.
  */
 
@@ -94,7 +94,7 @@ class EncodedAppEntrypointCallsV2 {
       });
     }
 
-    // Pad to 2 calls (V2 supports 2 calls instead of V1's 5)
+    // Pad to 4 calls
     while (encodedFunctionCalls.length < ACCOUNT_MAX_CALLS_V2) {
       const emptyHash = await HashedValues.fromArgs([]);
       hashedArguments.push(emptyHash);

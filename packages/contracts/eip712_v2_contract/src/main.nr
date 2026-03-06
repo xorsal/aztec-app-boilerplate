@@ -6,9 +6,9 @@
  * display in MetaMask (e.g., addresses as bytes32 hex instead of uint256 decimals).
  *
  * Key differences from V1:
- * - 2-call entrypoint (instead of 5)
+ * - 4-call entrypoint with unified FunctionCall->Arguments type
  * - Variable argument types per function call (not fixed uint256[])
- * - Merkle tree whitelist constraining valid type_hash(FunctionCall{N}) values
+ * - Merkle tree whitelist constraining valid type_hash(FunctionCall) values
  * - AccountData and TxMetadata sub-structs in the authorization message
  * - Per-call is_public, hide_msg_sender, is_static flags in EIP-712
  */
@@ -38,8 +38,8 @@ pub contract Eip712AccountV2 {
 
     use crate::ecdsa_public_key_note::EcdsaPublicKeyNote;
     use crate::eip712_v2::{
-        AppPayload2, ACCOUNT_MAX_CALLS, APP_PAYLOAD_SERIALIZED_LEN, MERKLE_DEPTH,
-        MERKLE_ROOT_ARGS, MERKLE_ROOT_ARGS1, MERKLE_ROOT_ARGS2,
+        AppPayload2, ACCOUNT_MAX_CALLS, APP_PAYLOAD_SERIALIZED_LEN,
+        MERKLE_ROOT_FC, MERKLE_ROOT_FC_AUTH,
         Eip712WitnessV2_2, Eip712AuthwitWitnessV2,
         compute_aztec_args_hash, compute_eip712_payload, compute_function_selector,
         compute_inner_hash, type_hash_to_field,
@@ -94,7 +94,7 @@ pub contract Eip712AccountV2 {
     }
 
     // =========================================================================
-    // Entrypoint (2-call version with variable argument types)
+    // Entrypoint (4-call unified FunctionCall type with variable argument types)
     // =========================================================================
 
     #[external("private")]
@@ -109,7 +109,7 @@ pub contract Eip712AccountV2 {
         // Safety: Capsule data will be validated against AppPayload below
         let witness: Eip712WitnessV2_2 = unsafe {
             load_eip712_witness_v2_2(self.address).expect(
-                f"EIP-712 V2 witness capsule (2-call) not found",
+                f"EIP-712 V2 witness capsule not found",
             )
         };
 
@@ -122,10 +122,17 @@ pub contract Eip712AccountV2 {
         let serialized_payload: [Field; APP_PAYLOAD_SERIALIZED_LEN] = app_payload.serialize();
 
         // =====================================================================
-        // Verify both calls and compute EIP-712 hashes
+        // Verify all calls and compute EIP-712 hashes
         // =====================================================================
 
-        let merkle_roots = [MERKLE_ROOT_ARGS1, MERKLE_ROOT_ARGS2];
+        // Verify shared FunctionCall type_hash via Merkle tree ONCE (all calls share the same type)
+        let fc_type_hash_field = type_hash_to_field(witness.fc_type_hash);
+        verify_arguments_whitelist(
+            fc_type_hash_field,
+            witness.merkle_proof,
+            witness.merkle_leaf_index,
+            MERKLE_ROOT_FC,
+        );
 
         let mut call_hashes: [[u8; 32]; ACCOUNT_MAX_CALLS] = [[0; 32]; ACCOUNT_MAX_CALLS];
         let mut has_any_call = false;
@@ -167,30 +174,21 @@ pub contract Eip712AccountV2 {
                     "V2 args_hash mismatch with AppPayload",
                 );
 
-                // 4. Verify type_hash(FunctionCall{N}) via Merkle tree (Approach 2)
-                let fc_type_hash_field = type_hash_to_field(witness.fc_type_hashes[call_idx]);
-                verify_arguments_whitelist(
-                    fc_type_hash_field,
-                    witness.merkle_proofs[call_idx],
-                    witness.merkle_leaf_indices[call_idx],
-                    merkle_roots[call_idx],
-                );
-
-                // 5. Compute hashStruct(Arguments{N}) using oracle-provided type_hash
+                // 4. Compute hashStruct(Arguments) using shared type_hash
                 let args_struct_hash = hash_struct_arguments(
-                    witness.args_type_hashes[call_idx],
+                    witness.args_type_hash,
                     witness.function_args[call_idx],
                     witness.args_lengths[call_idx],
                 );
 
-                // 6. Compute hashStruct(FunctionCall{N}) using oracle-provided type_hash
+                // 5. Compute hashStruct(FunctionCall) using shared type_hash
                 let target_bytes = field_to_bytes32(witness.target_addresses[call_idx]);
                 let sig_hash = hash_string(
                     witness.function_signatures[call_idx],
                     witness.signature_lengths[call_idx],
                 );
                 call_hashes[call_idx] = hash_struct_function_call_v2(
-                    witness.fc_type_hashes[call_idx],
+                    witness.fc_type_hash,
                     target_bytes,
                     sig_hash,
                     args_struct_hash,
@@ -199,20 +197,10 @@ pub contract Eip712AccountV2 {
                     witness.is_static[call_idx],
                 );
             } else {
-                // Empty call slot
+                // Empty call slot - still needs valid EIP-712 hash
                 let empty_args: [Field; 20] = [0; 20];
-
-                // Verify FunctionCall type_hash via Merkle tree
-                let fc_type_hash_field = type_hash_to_field(witness.fc_type_hashes[call_idx]);
-                verify_arguments_whitelist(
-                    fc_type_hash_field,
-                    witness.merkle_proofs[call_idx],
-                    witness.merkle_leaf_indices[call_idx],
-                    merkle_roots[call_idx],
-                );
-
                 let empty_args_struct_hash = hash_struct_arguments(
-                    witness.args_type_hashes[call_idx],
+                    witness.args_type_hash,
                     empty_args,
                     0,
                 );
@@ -221,7 +209,7 @@ pub contract Eip712AccountV2 {
                 let empty_sig_hash = hash_string([0; 128], 0);
 
                 call_hashes[call_idx] = hash_struct_function_call_v2(
-                    witness.fc_type_hashes[call_idx],
+                    witness.fc_type_hash,
                     zero_bytes,
                     empty_sig_hash,
                     empty_args_struct_hash,
@@ -238,12 +226,10 @@ pub contract Eip712AccountV2 {
         // Compute EntrypointAuthorization hash
         // =====================================================================
 
-        // Build full encode_type for EntrypointAuthorization
+        // Build full encode_type for EntrypointAuthorization (single shared args type)
         let (entrypoint_encode_type, entrypoint_encode_type_len) = build_encode_type_entrypoint(
-            witness.args_type_strings[0],
-            witness.args_type_string_lengths[0],
-            witness.args_type_strings[1],
-            witness.args_type_string_lengths[1],
+            witness.args_type_string,
+            witness.args_type_string_length,
         );
         let entrypoint_type_hash = keccak256::keccak256(entrypoint_encode_type, entrypoint_encode_type_len);
 
@@ -266,24 +252,23 @@ pub contract Eip712AccountV2 {
         );
 
         // Compute hashStruct(EntrypointAuthorization)
-        // typeHash || accountDataHash || fc1Hash || fc2Hash || txMetadataHash
-        let mut entrypoint_data: [u8; 160] = [0; 160];
+        // typeHash || accountDataHash || fc1Hash || fc2Hash || fc3Hash || fc4Hash || txMetadataHash
+        let mut entrypoint_data: [u8; 224] = [0; 224];
         for i in 0..32 {
             entrypoint_data[i] = entrypoint_type_hash[i];
         }
         for i in 0..32 {
             entrypoint_data[32 + i] = account_data_hash[i];
         }
-        for i in 0..32 {
-            entrypoint_data[64 + i] = call_hashes[0][i];
+        for call_idx in 0..ACCOUNT_MAX_CALLS {
+            for i in 0..32 {
+                entrypoint_data[64 + call_idx * 32 + i] = call_hashes[call_idx][i];
+            }
         }
         for i in 0..32 {
-            entrypoint_data[96 + i] = call_hashes[1][i];
+            entrypoint_data[192 + i] = tx_metadata_hash[i];
         }
-        for i in 0..32 {
-            entrypoint_data[128 + i] = tx_metadata_hash[i];
-        }
-        let message_hash = keccak256::keccak256(entrypoint_data, 160);
+        let message_hash = keccak256::keccak256(entrypoint_data, 224);
 
         // Compute final EIP-712 payload
         let eip712_payload = compute_eip712_payload(DOMAIN_SEPARATOR, message_hash);
@@ -384,7 +369,7 @@ pub contract Eip712AccountV2 {
             fc_auth_type_hash_field,
             witness.merkle_proof,
             witness.merkle_leaf_index,
-            MERKLE_ROOT_ARGS,
+            MERKLE_ROOT_FC_AUTH,
         );
 
         // Compute hashStruct(Arguments) using oracle-provided type_hash

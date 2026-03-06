@@ -15,13 +15,11 @@ export * from "./eip712-account-v2.js";
 export {
   getMerkleProof,
   getMerkleRoot,
-  computeTypeHashField,
   computeFcTypeHashField,
   computeFcTypeHashBytes,
   computeArgsTypeHashBytes,
   preWarmTrees,
-  MERKLE_ROOT_ARGUMENTS,
-  MERKLE_ROOT_ARGUMENTS1,
-  MERKLE_ROOT_ARGUMENTS2,
+  MERKLE_ROOT_FC,
+  MERKLE_ROOT_FC_AUTH,
   type MerkleProof,
 } from "./merkle-tree-data.js";

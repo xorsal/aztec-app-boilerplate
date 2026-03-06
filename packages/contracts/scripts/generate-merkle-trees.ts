@@ -1,14 +1,13 @@
 /**
  * Merkle Tree Generator for EIP-712 V2 Variable Argument Types (Approach 2)
  *
- * Generates Poseidon2 Merkle trees for whitelisting valid type_hash(FunctionCall{N}) values.
+ * Generates Poseidon2 Merkle trees for whitelisting valid type_hash(FunctionCall) values.
  *
  * Approach 2: leaves are keccak256(fc_encode_type) instead of keccak256(args_type_string).
- * - Arguments1 tree: fc_encode_type = FC1_PRIMARY + args_type_string
- * - Arguments2 tree: fc_encode_type = FC2_PRIMARY + args_type_string
- * - Arguments tree:  fc_encode_type = FC_AUTH_PRIMARY + args_type_string + AUTHWIT_APP_DOMAIN_DEF
+ * - FunctionCall tree: fc_encode_type = FC_PRIMARY + args_type_string
+ * - Arguments tree:    fc_encode_type = FC_AUTH_PRIMARY + args_type_string + AUTHWIT_APP_DOMAIN_DEF
  *
- * For each struct name (Arguments, Arguments1, Arguments2):
+ * For each tree (FunctionCall, Arguments):
  * - Enumerates all valid (arg_count, type_combination) pairs for 0..10 args × 3 types
  * - Computes keccak256(fc_encode_type) for each combination
  * - Converts to BN254 Field (mod p, truncating 2 MSBs)
@@ -30,6 +29,7 @@ import { Fr } from "@aztec/aztec.js/fields";
 
 const ARGUMENT_TYPES = ["bytes32", "uint256", "int256"] as const;
 const MAX_ARGS = 10;
+const MAX_ARGS_IN_JSON = 5; // Only include proofs for argCount 0..5 in the JSON (~0.9MB vs ~299MB)
 const TREE_DEPTH = 17;
 const PADDED_SIZE = 1 << TREE_DEPTH; // 131072
 
@@ -38,24 +38,20 @@ const BN254_FR_MODULUS =
   0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001n;
 
 // FC primary strings (must match Noir constants in eip712_v2.nr)
-const FC1_PRIMARY =
-  "FunctionCall1(bytes32 contract,string functionSignature,Arguments1 arguments,bool isPublic,bool hideMsgSender,bool isStatic)";
-const FC2_PRIMARY =
-  "FunctionCall2(bytes32 contract,string functionSignature,Arguments2 arguments,bool isPublic,bool hideMsgSender,bool isStatic)";
+const FC_PRIMARY =
+  "FunctionCall(bytes32 contract,string functionSignature,Arguments arguments,bool isPublic,bool hideMsgSender,bool isStatic)";
 const FC_AUTH_PRIMARY =
   "FunctionCallAuthorization(AuthwitAppDomain appDomain,bytes32 contract,string functionSignature,Arguments arguments,bool isPublic)";
 const AUTHWIT_APP_DOMAIN_DEF =
   "AuthwitAppDomain(uint256 chainId,bytes32 verifyingContract)";
 
 /**
- * Build the full FunctionCall encode_type for a given struct name and args type string.
+ * Build the full FunctionCall encode_type for a given tree name and args type string.
  */
 function buildFcEncodeType(structName: string, argsTypeString: string): string {
   switch (structName) {
-    case "Arguments1":
-      return FC1_PRIMARY + argsTypeString;
-    case "Arguments2":
-      return FC2_PRIMARY + argsTypeString;
+    case "FunctionCall":
+      return FC_PRIMARY + argsTypeString;
     case "Arguments":
       return FC_AUTH_PRIMARY + argsTypeString + AUTHWIT_APP_DOMAIN_DEF;
     default:
@@ -68,35 +64,35 @@ function buildFcEncodeType(structName: string, argsTypeString: string): string {
 // =============================================================================
 
 /**
- * Build the Arguments type string for a given struct name and type combination.
- * E.g. "Arguments1(bytes32 argument1,uint256 argument2)"
+ * Build the Arguments type string for a given type combination.
+ * Always uses "Arguments" as the struct name.
+ * E.g. "Arguments(bytes32 argument1,uint256 argument2)"
  */
 function buildTypeString(
-  structName: string,
   types: (typeof ARGUMENT_TYPES)[number][],
 ): string {
   if (types.length === 0) {
-    return `${structName}()`;
+    return "Arguments()";
   }
   const fields = types
     .map((type, i) => `${type} argument${i + 1}`)
     .join(",");
-  return `${structName}(${fields})`;
+  return `Arguments(${fields})`;
 }
 
 /**
  * Enumerate all valid type combinations for 0..maxArgs arguments × 3 types.
- * Returns an array of type strings for the given struct name.
+ * Always uses "Arguments" as the struct name.
+ * Returns both the type string and the argCount for each entry.
  */
 function enumerateAllTypeStrings(
-  structName: string,
   maxArgs: number = MAX_ARGS,
-): string[] {
-  const results: string[] = [];
+): { typeString: string; argCount: number }[] {
+  const results: { typeString: string; argCount: number }[] = [];
 
   for (let argCount = 0; argCount <= maxArgs; argCount++) {
     if (argCount === 0) {
-      results.push(buildTypeString(structName, []));
+      results.push({ typeString: buildTypeString([]), argCount: 0 });
       continue;
     }
 
@@ -109,7 +105,7 @@ function enumerateAllTypeStrings(
         types.push(ARGUMENT_TYPES[remaining % 3]);
         remaining = Math.floor(remaining / 3);
       }
-      results.push(buildTypeString(structName, types));
+      results.push({ typeString: buildTypeString(types), argCount });
     }
   }
 
@@ -141,8 +137,8 @@ interface TreeData {
   structName: string;
   root: Fr;
   depth: number;
-  /** Map from type_hash (as hex) to {leafIndex, siblingPath} */
-  proofs: Map<string, { leafIndex: number; siblingPath: Fr[] }>;
+  /** Map from type_hash (as hex) to {leafIndex, siblingPath, argCount} */
+  proofs: Map<string, { leafIndex: number; siblingPath: Fr[]; argCount: number }>;
   /** All leaves as Fields (padded to power of 2) */
   leaves: Fr[];
   /** Map from type string to type_hash field value */
@@ -155,19 +151,21 @@ interface TreeData {
 async function generateTree(structName: string): Promise<TreeData> {
   console.log(`\nGenerating tree for ${structName}...`);
 
-  // 1. Enumerate all args type strings
-  const argsTypeStrings = enumerateAllTypeStrings(structName);
-  console.log(`  Total type strings: ${argsTypeStrings.length}`);
+  // 1. Enumerate all args type strings (always "Arguments")
+  const argsTypeEntries = enumerateAllTypeStrings();
+  console.log(`  Total type strings: ${argsTypeEntries.length}`);
 
   // 2. Compute fc_encode_type hashes and convert to Fields (Approach 2)
   const typeStringToField = new Map<string, Fr>();
+  const leafArgCounts = new Map<string, number>(); // hex key → argCount
   const leafFields: Fr[] = [];
 
-  for (const argsTS of argsTypeStrings) {
+  for (const { typeString: argsTS, argCount } of argsTypeEntries) {
     const fcEncodeType = buildFcEncodeType(structName, argsTS);
     const hash = computeStringHash(fcEncodeType);
     const field = hashToField(hash);
     typeStringToField.set(argsTS, field);
+    leafArgCounts.set(field.toString(), argCount);
     leafFields.push(field);
   }
 
@@ -187,14 +185,15 @@ async function generateTree(structName: string): Promise<TreeData> {
   console.log(`  Root: ${root.toString()}`);
 
   // 5. Build proof map
-  const proofs = new Map<string, { leafIndex: number; siblingPath: Fr[] }>();
+  const proofs = new Map<string, { leafIndex: number; siblingPath: Fr[]; argCount: number }>();
   for (const [ts, field] of typeStringToField.entries()) {
     const leafIndex = tree.getIndex(field.toBuffer());
     const siblingPath = tree
       .getSiblingPath(leafIndex)
       .map((b: Buffer) => Fr.fromBuffer(b));
     const hexKey = field.toString();
-    proofs.set(hexKey, { leafIndex, siblingPath });
+    const argCount = leafArgCounts.get(hexKey) ?? 0;
+    proofs.set(hexKey, { leafIndex, siblingPath, argCount });
   }
 
   return {
@@ -226,7 +225,7 @@ function formatNoirRoot(name: string, fr: Fr): string {
 }
 
 /**
- * Output Noir constants for all 3 trees.
+ * Output Noir constants for both trees.
  */
 function outputNoirConstants(trees: TreeData[]): void {
   console.log("\n// =============================================================================");
@@ -237,9 +236,8 @@ function outputNoirConstants(trees: TreeData[]): void {
 
   for (const tree of trees) {
     const nameMap: Record<string, string> = {
-      Arguments: "MERKLE_ROOT_ARGS",
-      Arguments1: "MERKLE_ROOT_ARGS1",
-      Arguments2: "MERKLE_ROOT_ARGS2",
+      FunctionCall: "MERKLE_ROOT_FC",
+      Arguments: "MERKLE_ROOT_FC_AUTH",
     };
     const name = nameMap[tree.structName] || `MERKLE_ROOT_${tree.structName.toUpperCase()}`;
     console.log(formatNoirRoot(name, tree.root));
@@ -256,7 +254,12 @@ function outputTypeScriptData(trees: TreeData[]): void {
 
   console.log("// Merkle roots");
   for (const tree of trees) {
-    console.log(`export const MERKLE_ROOT_${tree.structName.toUpperCase()} = "${tree.root.toString()}" as const;`);
+    const nameMap: Record<string, string> = {
+      FunctionCall: "MERKLE_ROOT_FC",
+      Arguments: "MERKLE_ROOT_FC_AUTH",
+    };
+    const name = nameMap[tree.structName] || `MERKLE_ROOT_${tree.structName.toUpperCase()}`;
+    console.log(`export const ${name} = "${tree.root.toString()}" as const;`);
   }
   console.log(`\nexport const MERKLE_DEPTH = ${TREE_DEPTH};`);
 }
@@ -281,47 +284,43 @@ async function main() {
 
   // Generate trees
   const trees = await Promise.all([
+    generateTree("FunctionCall"),
     generateTree("Arguments"),
-    generateTree("Arguments1"),
-    generateTree("Arguments2"),
   ]);
 
   // Output constants
   outputNoirConstants(trees);
   outputTypeScriptData(trees);
 
-  // Write JSON data for TS consumption
-  const jsonOutput: Record<
-    string,
-    {
-      root: string;
-      depth: number;
-      proofs: Record<string, { leafIndex: number; siblingPath: string[] }>;
-      typeStringMap: Record<string, string>;
-    }
-  > = {};
+  // Write JSON data for TS consumption (only proofs for argCount 0..MAX_ARGS_IN_JSON)
+  const jsonOutput: Record<string, unknown> = {
+    maxArgsInJson: MAX_ARGS_IN_JSON,
+  };
 
   for (const tree of trees) {
     const proofs: Record<string, { leafIndex: number; siblingPath: string[] }> =
       {};
+    let includedCount = 0;
+    let skippedCount = 0;
     for (const [key, proof] of tree.proofs.entries()) {
+      if (proof.argCount > MAX_ARGS_IN_JSON) {
+        skippedCount++;
+        continue;
+      }
       proofs[key] = {
         leafIndex: proof.leafIndex,
         siblingPath: proof.siblingPath.map((f) => f.toString()),
       };
-    }
-
-    const typeStringMap: Record<string, string> = {};
-    for (const [ts, field] of tree.typeStringToField.entries()) {
-      typeStringMap[ts] = field.toString();
+      includedCount++;
     }
 
     jsonOutput[tree.structName] = {
       root: tree.root.toString(),
       depth: tree.depth,
       proofs,
-      typeStringMap,
     };
+
+    console.log(`  ${tree.structName}: ${includedCount} proofs included, ${skippedCount} skipped (argCount > ${MAX_ARGS_IN_JSON})`);
   }
 
   // Write to file
@@ -332,7 +331,10 @@ async function main() {
     "../../eip712/src/lib/merkle-tree-data.generated.json",
   );
   fs.writeFileSync(outPath, JSON.stringify(jsonOutput, null, 2));
-  console.log(`\nTree data written to: ${outPath}`);
+
+  const sizeBytes = fs.statSync(outPath).size;
+  const sizeMB = (sizeBytes / (1024 * 1024)).toFixed(2);
+  console.log(`\nTree data written to: ${outPath} (${sizeMB} MB)`);
 }
 
 main().catch(console.error);

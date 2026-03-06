@@ -70,12 +70,14 @@ export interface AuthwitAppDomainV2 {
 }
 
 /**
- * Entrypoint authorization message (2 calls)
+ * Entrypoint authorization message (4 calls)
  */
 export interface EntrypointAuthorizationV2 {
   accountData: AccountData;
   functionCall1: FunctionCallV2;
   functionCall2: FunctionCallV2;
+  functionCall3: FunctionCallV2;
+  functionCall4: FunctionCallV2;
   txMetadata: TxMetadata;
 }
 
@@ -94,8 +96,8 @@ export interface FunctionCallAuthorizationV2 {
 // V2 Constants
 // =============================================================================
 
-/** Max function calls per V2 entrypoint (reduced from 5 to 2) */
-export const ACCOUNT_MAX_CALLS_V2 = 2;
+/** Max function calls per V2 entrypoint */
+export const ACCOUNT_MAX_CALLS_V2 = 4;
 
 /** Max arguments per function call */
 export const MAX_ARGS_V2 = 10;
@@ -116,7 +118,7 @@ export const MERKLE_DEPTH = 17;
 // Capsule Slots (must match Noir eip712_v2.nr)
 // =============================================================================
 
-/** Capsule slot for V2 2-call entrypoint witness */
+/** Capsule slot for V2 4-call entrypoint witness */
 export const EIP712_WITNESS_V2_2_SLOT = 0x1234567890abcdf1n;
 
 /** Capsule slot for V2 individual authwit */
@@ -159,8 +161,8 @@ export function buildArgumentsTypeString(
 }
 
 /**
- * Fixed EIP-712 type definitions for V2 (2-call entrypoint).
- * Arguments1 and Arguments2 types are added dynamically at signing time.
+ * Fixed EIP-712 type definitions for V2 (4-call entrypoint).
+ * Arguments type is added dynamically at signing time.
  */
 export const EIP712_TYPES_V2_BASE = {
   EIP712Domain: [
@@ -184,24 +186,17 @@ export const EIP712_TYPES_V2_BASE = {
 
   EntrypointAuthorization: [
     { name: "accountData", type: "AccountData" },
-    { name: "functionCall1", type: "FunctionCall1" },
-    { name: "functionCall2", type: "FunctionCall2" },
+    { name: "functionCall1", type: "FunctionCall" },
+    { name: "functionCall2", type: "FunctionCall" },
+    { name: "functionCall3", type: "FunctionCall" },
+    { name: "functionCall4", type: "FunctionCall" },
     { name: "txMetadata", type: "TxMetadata" },
   ],
 
-  FunctionCall1: [
+  FunctionCall: [
     { name: "contract", type: "bytes32" },
     { name: "functionSignature", type: "string" },
-    { name: "arguments", type: "Arguments1" },
-    { name: "isPublic", type: "bool" },
-    { name: "hideMsgSender", type: "bool" },
-    { name: "isStatic", type: "bool" },
-  ],
-
-  FunctionCall2: [
-    { name: "contract", type: "bytes32" },
-    { name: "functionSignature", type: "string" },
-    { name: "arguments", type: "Arguments2" },
+    { name: "arguments", type: "Arguments" },
     { name: "isPublic", type: "bool" },
     { name: "hideMsgSender", type: "bool" },
     { name: "isStatic", type: "bool" },
@@ -224,16 +219,14 @@ export const EIP712_TYPES_V2_BASE = {
 };
 
 /**
- * Build complete EIP-712 types for 2-call entrypoint with dynamic argument types.
+ * Build complete EIP-712 types for 4-call entrypoint with dynamic argument types.
  */
 export function buildEntrypointTypes(
-  args1Types: ArgumentType[],
-  args2Types: ArgumentType[],
+  argsTypes: ArgumentType[],
 ): Record<string, Array<{ name: string; type: string }>> {
   return {
     ...EIP712_TYPES_V2_BASE,
-    Arguments1: buildArgumentsTypeDef(args1Types),
-    Arguments2: buildArgumentsTypeDef(args2Types),
+    Arguments: buildArgumentsTypeDef(argsTypes),
   };
 }
 
@@ -255,15 +248,11 @@ export function buildAuthwitTypes(
 
 /** EntrypointAuthorization primary struct definition */
 export const ENTRYPOINT_AUTH_PRIMARY =
-  "EntrypointAuthorization(AccountData accountData,FunctionCall1 functionCall1,FunctionCall2 functionCall2,TxMetadata txMetadata)";
+  "EntrypointAuthorization(AccountData accountData,FunctionCall functionCall1,FunctionCall functionCall2,FunctionCall functionCall3,FunctionCall functionCall4,TxMetadata txMetadata)";
 
-/** FunctionCall1 primary struct definition */
-export const FC1_PRIMARY =
-  "FunctionCall1(bytes32 contract,string functionSignature,Arguments1 arguments,bool isPublic,bool hideMsgSender,bool isStatic)";
-
-/** FunctionCall2 primary struct definition */
-export const FC2_PRIMARY =
-  "FunctionCall2(bytes32 contract,string functionSignature,Arguments2 arguments,bool isPublic,bool hideMsgSender,bool isStatic)";
+/** FunctionCall primary struct definition */
+export const FC_PRIMARY =
+  "FunctionCall(bytes32 contract,string functionSignature,Arguments arguments,bool isPublic,bool hideMsgSender,bool isStatic)";
 
 /** FunctionCallAuthorization primary struct definition */
 export const FC_AUTH_PRIMARY =
@@ -274,7 +263,7 @@ export const AUTHWIT_APP_DOMAIN_DEF =
   "AuthwitAppDomain(uint256 chainId,bytes32 verifyingContract)";
 
 // =============================================================================
-// Empty function call (for padding unused slots in 2-call entrypoint)
+// Empty function call (for padding unused slots in 4-call entrypoint)
 // =============================================================================
 
 export const EMPTY_FUNCTION_CALL_V2: FunctionCallV2 = {

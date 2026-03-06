@@ -15,8 +15,7 @@ import {
   DEFAULT_VERIFYING_CONTRACT_V2,
   EMPTY_FUNCTION_CALL_V2,
   ENTRYPOINT_AUTH_PRIMARY,
-  FC1_PRIMARY,
-  FC2_PRIMARY,
+  FC_PRIMARY,
   FC_AUTH_PRIMARY,
   EIP712_TYPES_V2_BASE,
   buildArgumentsTypeDef,
@@ -28,8 +27,8 @@ import {
 
 describe("EIP-712 V2 Types", () => {
   describe("constants", () => {
-    it("should have ACCOUNT_MAX_CALLS_V2 = 2", () => {
-      expect(ACCOUNT_MAX_CALLS_V2).toBe(2);
+    it("should have ACCOUNT_MAX_CALLS_V2 = 4", () => {
+      expect(ACCOUNT_MAX_CALLS_V2).toBe(4);
     });
 
     it("should have MAX_ARGS_V2 = 10", () => {
@@ -154,35 +153,27 @@ describe("EIP-712 V2 Types", () => {
 
   describe("buildEntrypointTypes", () => {
     it("should include all base types", () => {
-      const types = buildEntrypointTypes(["bytes32"], ["uint256"]);
+      const types = buildEntrypointTypes(["bytes32"]);
       expect(types.EIP712Domain).toBeDefined();
       expect(types.AccountData).toBeDefined();
       expect(types.TxMetadata).toBeDefined();
       expect(types.EntrypointAuthorization).toBeDefined();
-      expect(types.FunctionCall1).toBeDefined();
-      expect(types.FunctionCall2).toBeDefined();
+      expect(types.FunctionCall).toBeDefined();
       expect(types.AuthwitAppDomain).toBeDefined();
       expect(types.FunctionCallAuthorization).toBeDefined();
     });
 
-    it("should include dynamic Arguments1 and Arguments2 types", () => {
-      const types = buildEntrypointTypes(
-        ["bytes32", "uint256"],
-        ["int256"],
-      );
-      expect(types.Arguments1).toEqual([
+    it("should include dynamic Arguments type", () => {
+      const types = buildEntrypointTypes(["bytes32", "uint256"]);
+      expect(types.Arguments).toEqual([
         { name: "argument1", type: "bytes32" },
         { name: "argument2", type: "uint256" },
-      ]);
-      expect(types.Arguments2).toEqual([
-        { name: "argument1", type: "int256" },
       ]);
     });
 
     it("should handle empty argument types", () => {
-      const types = buildEntrypointTypes([], []);
-      expect(types.Arguments1).toEqual([]);
-      expect(types.Arguments2).toEqual([]);
+      const types = buildEntrypointTypes([]);
+      expect(types.Arguments).toEqual([]);
     });
   });
 
@@ -213,19 +204,13 @@ describe("EIP-712 V2 Types", () => {
   describe("primary struct strings", () => {
     it("should have correct EntrypointAuthorization primary", () => {
       expect(ENTRYPOINT_AUTH_PRIMARY).toBe(
-        "EntrypointAuthorization(AccountData accountData,FunctionCall1 functionCall1,FunctionCall2 functionCall2,TxMetadata txMetadata)",
+        "EntrypointAuthorization(AccountData accountData,FunctionCall functionCall1,FunctionCall functionCall2,FunctionCall functionCall3,FunctionCall functionCall4,TxMetadata txMetadata)",
       );
     });
 
-    it("should have correct FunctionCall1 primary", () => {
-      expect(FC1_PRIMARY).toBe(
-        "FunctionCall1(bytes32 contract,string functionSignature,Arguments1 arguments,bool isPublic,bool hideMsgSender,bool isStatic)",
-      );
-    });
-
-    it("should have correct FunctionCall2 primary", () => {
-      expect(FC2_PRIMARY).toBe(
-        "FunctionCall2(bytes32 contract,string functionSignature,Arguments2 arguments,bool isPublic,bool hideMsgSender,bool isStatic)",
+    it("should have correct FunctionCall primary", () => {
+      expect(FC_PRIMARY).toBe(
+        "FunctionCall(bytes32 contract,string functionSignature,Arguments arguments,bool isPublic,bool hideMsgSender,bool isStatic)",
       );
     });
 
@@ -286,17 +271,10 @@ describe("EIP-712 V2 Types", () => {
       });
     });
 
-    it("should have FunctionCall1 referencing Arguments1", () => {
-      expect(EIP712_TYPES_V2_BASE.FunctionCall1).toContainEqual({
+    it("should have FunctionCall referencing Arguments", () => {
+      expect(EIP712_TYPES_V2_BASE.FunctionCall).toContainEqual({
         name: "arguments",
-        type: "Arguments1",
-      });
-    });
-
-    it("should have FunctionCall2 referencing Arguments2", () => {
-      expect(EIP712_TYPES_V2_BASE.FunctionCall2).toContainEqual({
-        name: "arguments",
-        type: "Arguments2",
+        type: "Arguments",
       });
     });
 

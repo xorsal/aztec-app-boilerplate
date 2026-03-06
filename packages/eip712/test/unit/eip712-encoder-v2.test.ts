@@ -16,8 +16,7 @@ import {
 import {
   EMPTY_FUNCTION_CALL_V2,
   ENTRYPOINT_AUTH_PRIMARY,
-  FC1_PRIMARY,
-  FC2_PRIMARY,
+  FC_PRIMARY,
   FC_AUTH_PRIMARY,
   DEFAULT_VERIFYING_CONTRACT_V2,
   buildArgumentsTypeString,
@@ -32,8 +31,6 @@ describe("Eip712EncoderV2", () => {
     it("should use default chain ID 31337", () => {
       const encoder = new Eip712EncoderV2();
       const typedData = encoder.buildEntrypointTypedData2(
-        EMPTY_FUNCTION_CALL_V2,
-        EMPTY_FUNCTION_CALL_V2,
         [],
         [],
         DEFAULT_ACCOUNT_DATA,
@@ -45,8 +42,6 @@ describe("Eip712EncoderV2", () => {
     it("should accept custom chain ID", () => {
       const encoder = new Eip712EncoderV2({ chainId: 1n });
       const typedData = encoder.buildEntrypointTypedData2(
-        EMPTY_FUNCTION_CALL_V2,
-        EMPTY_FUNCTION_CALL_V2,
         [],
         [],
         DEFAULT_ACCOUNT_DATA,
@@ -69,21 +64,20 @@ describe("Eip712EncoderV2", () => {
         isStatic: false,
       };
       const typedData = encoder.buildEntrypointTypedData2(
-        fc,
-        EMPTY_FUNCTION_CALL_V2,
+        [fc],
         ["bytes32", "uint256"],
-        [],
         DEFAULT_ACCOUNT_DATA,
         { feePaymentMethod: 0, cancellable: false, txNonce: 42n },
       );
 
       expect(typedData.primaryType).toBe("EntrypointAuthorization");
       expect(typedData.types.EIP712Domain).toBeDefined();
-      expect(typedData.types.Arguments1).toBeDefined();
-      expect(typedData.types.Arguments2).toBeDefined();
+      expect(typedData.types.Arguments).toBeDefined();
       expect(typedData.message.accountData).toBeDefined();
       expect(typedData.message.functionCall1).toBeDefined();
       expect(typedData.message.functionCall2).toBeDefined();
+      expect(typedData.message.functionCall3).toBeDefined();
+      expect(typedData.message.functionCall4).toBeDefined();
       expect(typedData.message.txMetadata).toBeDefined();
     });
 
@@ -99,10 +93,8 @@ describe("Eip712EncoderV2", () => {
         isStatic: false,
       };
       const typedData = encoder.buildEntrypointTypedData2(
-        fc,
-        EMPTY_FUNCTION_CALL_V2,
+        [fc],
         ["uint256"],
-        [],
         DEFAULT_ACCOUNT_DATA,
         { feePaymentMethod: 0, cancellable: false, txNonce: 0n },
       );
@@ -117,8 +109,6 @@ describe("Eip712EncoderV2", () => {
       const customContract =
         "0xdeadbeef00000000000000000000000000000000" as const;
       const typedData = encoder.buildEntrypointTypedData2(
-        EMPTY_FUNCTION_CALL_V2,
-        EMPTY_FUNCTION_CALL_V2,
         [],
         [],
         DEFAULT_ACCOUNT_DATA,
@@ -132,8 +122,6 @@ describe("Eip712EncoderV2", () => {
     it("should include tx metadata in message", () => {
       const encoder = new Eip712EncoderV2();
       const typedData = encoder.buildEntrypointTypedData2(
-        EMPTY_FUNCTION_CALL_V2,
-        EMPTY_FUNCTION_CALL_V2,
         [],
         [],
         DEFAULT_ACCOUNT_DATA,
@@ -308,15 +296,11 @@ describe("Eip712EncoderV2", () => {
 
   describe("buildEntrypointEncodeType", () => {
     it("should produce correctly ordered type string", () => {
-      const args1TypeString = buildArgumentsTypeString("Arguments1", [
+      const argsTypeString = buildArgumentsTypeString("Arguments", [
         "bytes32",
       ]);
-      const args2TypeString = buildArgumentsTypeString("Arguments2", [
-        "uint256",
-      ]);
       const encodeType = Eip712EncoderV2.buildEntrypointEncodeType(
-        args1TypeString,
-        args2TypeString,
+        argsTypeString,
       );
 
       // Should start with primary
@@ -325,40 +309,30 @@ describe("Eip712EncoderV2", () => {
       expect(encodeType).toContain(
         "AccountData(bytes32 address,string walletName,string version)",
       );
-      expect(encodeType).toContain(args1TypeString);
-      expect(encodeType).toContain(args2TypeString);
-      expect(encodeType).toContain(FC1_PRIMARY);
-      expect(encodeType).toContain(FC2_PRIMARY);
+      expect(encodeType).toContain(argsTypeString);
+      expect(encodeType).toContain(FC_PRIMARY);
       expect(encodeType).toContain(
         "TxMetadata(uint8 feePaymentMethod,bool cancellable,uint256 txNonce)",
       );
     });
 
     it("should have primary type first, then referenced types in alphabetical order", () => {
-      const args1TypeString = buildArgumentsTypeString("Arguments1", [
+      const argsTypeString = buildArgumentsTypeString("Arguments", [
         "bytes32",
       ]);
-      const args2TypeString = buildArgumentsTypeString("Arguments2", [
-        "uint256",
-      ]);
       const encodeType = Eip712EncoderV2.buildEntrypointEncodeType(
-        args1TypeString,
-        args2TypeString,
+        argsTypeString,
       );
 
-      // Check that AccountData comes before Arguments1 which comes before Arguments2
+      // Check that AccountData comes before Arguments which comes before FunctionCall
       const accountDataIdx = encodeType.indexOf("AccountData(");
-      const args1Idx = encodeType.indexOf("Arguments1(");
-      const args2Idx = encodeType.indexOf("Arguments2(");
-      const fc1Idx = encodeType.indexOf("FunctionCall1(");
-      const fc2Idx = encodeType.indexOf("FunctionCall2(");
+      const argsIdx = encodeType.indexOf("Arguments(");
+      const fcIdx = encodeType.indexOf("FunctionCall(");
       const txMetaIdx = encodeType.indexOf("TxMetadata(");
 
-      expect(accountDataIdx).toBeLessThan(args1Idx);
-      expect(args1Idx).toBeLessThan(args2Idx);
-      expect(args2Idx).toBeLessThan(fc1Idx);
-      expect(fc1Idx).toBeLessThan(fc2Idx);
-      expect(fc2Idx).toBeLessThan(txMetaIdx);
+      expect(accountDataIdx).toBeLessThan(argsIdx);
+      expect(argsIdx).toBeLessThan(fcIdx);
+      expect(fcIdx).toBeLessThan(txMetaIdx);
     });
   });
 

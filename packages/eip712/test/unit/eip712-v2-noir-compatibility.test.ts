@@ -22,8 +22,7 @@ import {
 import {
   type ArgumentType,
   ENTRYPOINT_AUTH_PRIMARY,
-  FC1_PRIMARY,
-  FC2_PRIMARY,
+  FC_PRIMARY,
   FC_AUTH_PRIMARY,
   DEFAULT_VERIFYING_CONTRACT_V2,
   buildArgumentsTypeString,
@@ -31,9 +30,8 @@ import {
 
 import {
   getMerkleRoot,
-  MERKLE_ROOT_ARGUMENTS,
-  MERKLE_ROOT_ARGUMENTS1,
-  MERKLE_ROOT_ARGUMENTS2,
+  MERKLE_ROOT_FC,
+  MERKLE_ROOT_FC_AUTH,
 } from "../../src/lib/merkle-tree-data.js";
 
 // =============================================================================
@@ -41,12 +39,10 @@ import {
 // =============================================================================
 
 const NOIR_MERKLE_ROOTS = {
-  MERKLE_ROOT_ARGS:
+  MERKLE_ROOT_FC:
+    "0x2f6722fe2ae340afcb0448978e464debf48ad5451f647b24f2aec095f59eeb11",
+  MERKLE_ROOT_FC_AUTH:
     "0x054a9fe2ce02ae6f96b01ea4962e3d41b2da0856e4027a2e2c53cf04c3271eda",
-  MERKLE_ROOT_ARGS1:
-    "0x23807fde3749e9b5ddbc6c91886cc6e55280139ed5518a318fb21af017089c94",
-  MERKLE_ROOT_ARGS2:
-    "0x1b95d5f26019d68281772cf97daae098abad03aff858c1790ec3082b717a0565",
 };
 
 const NOIR_DOMAIN_SEPARATOR =
@@ -134,26 +130,24 @@ describe("EIP-712 V2 Noir Compatibility", () => {
       expect(computed.toLowerCase()).toBe(hash.toLowerCase());
     });
 
-    it("FunctionCall1 type hash with specific Arguments1 definition", () => {
+    it("FunctionCall type hash with specific Arguments definition", () => {
       const argTypes: ArgumentType[] = ["bytes32", "uint256"];
-      const argsTypeString = buildArgumentsTypeString("Arguments1", argTypes);
-      // FunctionCall1 encode_type = FC1_PRIMARY + Arguments1(...)
-      const encodeType = FC1_PRIMARY + argsTypeString;
+      const argsTypeString = buildArgumentsTypeString("Arguments", argTypes);
+      // FunctionCall encode_type = FC_PRIMARY + Arguments(...)
+      const encodeType = FC_PRIMARY + argsTypeString;
       const expected = keccak256(encodePacked(["string"], [encodeType]));
       const computed = Eip712EncoderV2.computeFunctionCallTypeHash(
-        FC1_PRIMARY,
         argsTypeString,
       );
       expect(computed.toLowerCase()).toBe(expected.toLowerCase());
     });
 
-    it("FunctionCall2 type hash with specific Arguments2 definition", () => {
+    it("FunctionCall type hash with different Arguments definition", () => {
       const argTypes: ArgumentType[] = ["int256"];
-      const argsTypeString = buildArgumentsTypeString("Arguments2", argTypes);
-      const encodeType = FC2_PRIMARY + argsTypeString;
+      const argsTypeString = buildArgumentsTypeString("Arguments", argTypes);
+      const encodeType = FC_PRIMARY + argsTypeString;
       const expected = keccak256(encodePacked(["string"], [encodeType]));
       const computed = Eip712EncoderV2.computeFunctionCallTypeHash(
-        FC2_PRIMARY,
         argsTypeString,
       );
       expect(computed.toLowerCase()).toBe(expected.toLowerCase());

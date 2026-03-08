@@ -2,7 +2,7 @@
  * E2E Tests: Counter with EIP-712 Signing (V1 and V2)
  *
  * Uses the walletless fixture for MetaMask simulation.
- * Requires Aztec sandbox and deployed Counter contract.
+ * Requires Aztec sandbox running. Counter contract is deployed in-browser.
  *
  * V1: Fixed uint256[] argument encoding, 5 call slots
  * V2: Per-argument EIP-712 types (bytes32/uint256/int256) with Merkle proofs, 2 call slots
@@ -12,7 +12,7 @@ import { test, expect } from "./fixtures/walletless";
 import {
   selectAccountVersion,
   connectWallet,
-  waitForCounter,
+  deployCounterViaUI,
   TIMEOUTS,
 } from "./utils/test-helpers";
 
@@ -55,8 +55,8 @@ for (const version of ["v1", "v2"] as const) {
       await selectAccountVersion(page, version);
       await connectWallet(page);
 
-      // Wait for contract registration with PXE to complete
-      await waitForCounter(page);
+      // Deploy counter (or skip if already deployed) and wait for PXE registration
+      await deployCounterViaUI(page);
 
       // Read initial counter value
       const readBtn = page.getByRole("button", { name: /^Read$/i });

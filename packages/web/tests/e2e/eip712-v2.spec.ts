@@ -5,14 +5,14 @@
  * EIP-712 types (bytes32/uint256/int256), Merkle proof verification,
  * version toggle, and full read→increment→read cycle.
  *
- * Requires Aztec sandbox and deployed Counter contract (via global-setup).
+ * Requires Aztec sandbox running. Counter contract is deployed in-browser.
  */
 
 import { test, expect } from "./fixtures/walletless";
 import {
   selectAccountVersion,
   connectWallet,
-  waitForCounter,
+  deployCounterViaUI,
   TIMEOUTS,
 } from "./utils/test-helpers";
 
@@ -92,7 +92,7 @@ test.describe("EIP-712 V2 E2E", () => {
 
     await selectAccountVersion(page, "v2");
     await connectWallet(page);
-    await waitForCounter(page);
+    await deployCounterViaUI(page);
 
     // Click Read and wait for result
     const readBtn = page.getByRole("button", { name: /^Read$/i });
@@ -111,7 +111,7 @@ test.describe("EIP-712 V2 E2E", () => {
 
     await selectAccountVersion(page, "v2");
     await connectWallet(page);
-    await waitForCounter(page);
+    await deployCounterViaUI(page);
 
     // Read initial counter value
     const readBtn = page.getByRole("button", { name: /^Read$/i });

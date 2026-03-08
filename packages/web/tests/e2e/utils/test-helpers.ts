@@ -52,3 +52,31 @@ export async function waitForCounter(page: Page): Promise<void> {
   // Wait until the button is enabled (contract registration complete)
   await expect(readBtn).toBeEnabled({ timeout: TIMEOUTS.LONG });
 }
+
+/**
+ * Deploys the Counter contract via the in-browser "Deploy Counter" button,
+ * then waits for the contract to be registered and interactive.
+ *
+ * If the deploy button is visible (no contract address configured or stored),
+ * clicks it and waits for deployment to complete. If the counter is already
+ * deployed (Read/Increment buttons visible), this is a no-op.
+ *
+ * This makes tests work both:
+ * - With global-setup (contract pre-deployed → deploy button not shown → skips)
+ * - Without global-setup (no contract → deploy button shown → clicks it)
+ */
+export async function deployCounterViaUI(page: Page): Promise<void> {
+  const deployBtn = page.getByRole("button", { name: /Deploy Counter/i });
+
+  // If deploy button is visible, deploy; otherwise contract already exists
+  if (await deployBtn.isVisible({ timeout: TIMEOUTS.SHORT }).catch(() => false)) {
+    await deployBtn.click();
+    // Wait for deploying state to finish (button text returns to normal or disappears)
+    await expect(deployBtn).not.toHaveText("Deploying...", {
+      timeout: TIMEOUTS.TX,
+    });
+  }
+
+  // Now wait for contract registration to complete (Read button becomes enabled)
+  await waitForCounter(page);
+}

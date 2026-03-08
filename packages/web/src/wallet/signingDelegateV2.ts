@@ -5,16 +5,15 @@
  * V2 adds per-argument type annotations (bytes32/uint256/int256) and
  * Merkle proofs for the variable argument type whitelist.
  *
- * Unified design: All call slots share a single FunctionCall→Arguments type.
- * ACCOUNT_MAX_CALLS=4 allows 3 business calls + 1 SponsoredFPC slot.
+ * Per-slot design: Each call slot has its own FunctionCall{N} and Arguments{N} type.
+ * No padding — call count determines which entrypoint_N to use.
  *
  * When the entrypoint calls createWitnessCapsuleV2(), this delegate:
  * 1. Converts FunctionCall[] to FunctionCallInputV2[] (with argTypes inferred from artifact)
- * 2. Computes unified arg types across all calls
- * 3. Builds EIP-712 typed data via Eip712EncoderV2
- * 4. Calls walletClient.signTypedData() - MetaMask shows readable function names
- * 5. Gets a single Merkle proof for the unified FunctionCall type
- * 6. Serializes to capsule (175 Fields)
+ * 2. Builds EIP-712 typed data with per-slot FunctionCall{N}/Arguments{N} types
+ * 3. Calls walletClient.signTypedData() - MetaMask shows readable function names
+ * 4. Gets per-call Merkle proofs from respective FunctionCall{N} trees
+ * 5. Serializes to capsule (15 + 64*N Fields)
  */
 
 import type { ContractArtifact } from "@aztec/aztec.js/abi";
@@ -34,12 +33,12 @@ import {
   type FunctionCallInputV2,
   type FunctionCallV2,
   type ArgumentType,
-  ACCOUNT_MAX_CALLS_V2,
+  MAX_ENTRYPOINT_CALLS,
   MAX_SIGNATURE_SIZE_V2,
   MAX_SERIALIZED_ARGS_V2,
   MAX_ARGS_TYPE_STRING_LEN,
   MERKLE_DEPTH,
-  EIP712_WITNESS_V2_2_SLOT,
+  EIP712_WITNESS_V2_SLOTS,
   DEFAULT_VERIFYING_CONTRACT_V2,
   buildArgumentsTypeString,
   buildFunctionSignature,
@@ -47,7 +46,6 @@ import {
   getMerkleProof,
   computeFcTypeHashBytes,
   computeArgsTypeHashBytes,
-  computeUnifiedArgTypes,
 } from "@aztec-app/eip712";
 
 /**
@@ -149,7 +147,8 @@ export class MetaMaskEip712SigningDelegateV2
 
   /**
    * Creates a V2 EIP-712 witness capsule for the given function calls.
-   * Uses unified FunctionCall→Arguments type across all call slots.
+   * Each call has its own FunctionCall{N} and Arguments{N} type.
+   * No padding — capsule slot selected by call count.
    */
   async createWitnessCapsuleV2(
     calls: FunctionCall[],
@@ -157,26 +156,16 @@ export class MetaMaskEip712SigningDelegateV2
     contractAddress: AztecAddress,
   ): Promise<Capsule> {
     const functionCalls = this.convertToFunctionCallInputsV2(calls);
+    const callCount = functionCalls.length;
 
-    // Pad to 4 calls
-    const paddedCalls = [...functionCalls];
-    while (paddedCalls.length < ACCOUNT_MAX_CALLS_V2) {
-      paddedCalls.push({
-        targetAddress: 0n,
-        functionSignature: "",
-        args: [],
-        argTypes: [],
-        isPublic: false,
-        hideMsgSender: false,
-        isStatic: false,
-      });
+    if (callCount === 0 || callCount > MAX_ENTRYPOINT_CALLS) {
+      throw new Error(`Invalid call count: ${callCount} (must be 1-${MAX_ENTRYPOINT_CALLS})`);
     }
 
-    // Compute unified argument types across all active calls
-    const unifiedArgTypes = computeUnifiedArgTypes(paddedCalls);
+    const perCallArgTypes = functionCalls.map(c => c.argTypes);
 
-    // Build FunctionCallV2 objects for EIP-712 typed data (using unified types)
-    const fcObjects = paddedCalls.map((c) => this.buildFunctionCallV2(c, unifiedArgTypes));
+    // Build FunctionCallV2 objects for EIP-712 typed data (per-call types)
+    const fcObjects = functionCalls.map((c) => this.buildFunctionCallV2(c));
 
     const accountData = {
       address: pad(toHex(contractAddress.toField().toBigInt()), {
@@ -192,10 +181,10 @@ export class MetaMaskEip712SigningDelegateV2
       txNonce,
     };
 
-    // Build typed data with single unified Arguments type
+    // Build typed data with per-slot Arguments{N} types
     const typedData = this.encoder.buildEntrypointTypedData2(
       fcObjects,
-      unifiedArgTypes,
+      perCallArgTypes,
       accountData,
       txMetadata,
       DEFAULT_VERIFYING_CONTRACT_V2,
@@ -216,23 +205,24 @@ export class MetaMaskEip712SigningDelegateV2
     }
     const ecdsaSignature = sigBytes.slice(0, 64);
 
-    // Get single Merkle proof for the unified FunctionCall type
-    const proof = await getMerkleProof("FunctionCall", unifiedArgTypes);
+    // Get per-call Merkle proofs from respective FunctionCall{N} trees
+    const proofs = await Promise.all(
+      functionCalls.map((call, i) => getMerkleProof(`FunctionCall${i + 1}`, call.argTypes))
+    );
 
-    // Build oracle data with shared type/proof and serialize to capsule
+    // Build oracle data with per-call type/proof data and serialize to capsule
     const oracleData = this.buildOracleData(
-      paddedCalls,
+      functionCalls,
       ecdsaSignature,
-      proof,
-      unifiedArgTypes,
+      proofs,
       accountData,
       contractAddress.toField().toBigInt(),
     );
 
-    const capsuleData = this.serializeToCapsule(oracleData);
+    const capsuleData = this.serializeToCapsule(oracleData, callCount);
     return new Capsule(
       contractAddress,
-      new Fr(EIP712_WITNESS_V2_2_SLOT),
+      new Fr(EIP712_WITNESS_V2_SLOTS[callCount]),
       capsuleData,
     );
   }
@@ -286,15 +276,13 @@ export class MetaMaskEip712SigningDelegateV2
 
   private buildFunctionCallV2(
     call: FunctionCallInputV2,
-    unifiedArgTypes?: ArgumentType[],
   ): FunctionCallV2 {
     const contract = pad(toHex(call.targetAddress), {
       size: 32,
     }) as Hex;
-    const argTypes = unifiedArgTypes ?? call.argTypes;
 
     const arguments_: Record<string, bigint> = {};
-    for (let i = 0; i < argTypes.length; i++) {
+    for (let i = 0; i < call.argTypes.length; i++) {
       arguments_[`argument${i + 1}`] = call.args[i] ?? 0n;
     }
 
@@ -315,11 +303,11 @@ export class MetaMaskEip712SigningDelegateV2
   private buildOracleData(
     calls: FunctionCallInputV2[],
     ecdsaSignature: Uint8Array,
-    merkleProof: { siblingPath: Fr[]; leafIndex: number },
-    unifiedArgTypes: ArgumentType[],
+    merkleProofs: { siblingPath: Fr[]; leafIndex: number }[],
     accountData: { walletName: string; version: string },
     accountAddressBigInt: bigint,
   ) {
+    const callCount = calls.length;
     const functionSignatures: Uint8Array[] = [];
     const signatureLengths: number[] = [];
     const functionArgs: bigint[][] = [];
@@ -328,9 +316,16 @@ export class MetaMaskEip712SigningDelegateV2
     const isPublicArr: boolean[] = [];
     const hideMsgSenderArr: boolean[] = [];
     const isStaticArr: boolean[] = [];
+    const argsTypeStrings: Uint8Array[] = [];
+    const argsTypeStringLengths: number[] = [];
+    const merkleProofArrays: Fr[][] = [];
+    const merkleLeafIndices: number[] = [];
+    const fcTypeHashes: Uint8Array[] = [];
+    const argsTypeHashesArr: Uint8Array[] = [];
 
-    for (let i = 0; i < ACCOUNT_MAX_CALLS_V2; i++) {
+    for (let i = 0; i < callCount; i++) {
       const call = calls[i];
+      const slotNum = i + 1;
 
       // Function signature
       const sigBytes = new TextEncoder().encode(call.functionSignature);
@@ -351,17 +346,23 @@ export class MetaMaskEip712SigningDelegateV2
       isPublicArr.push(call.isPublic ?? false);
       hideMsgSenderArr.push(call.hideMsgSender ?? false);
       isStaticArr.push(call.isStatic ?? false);
+
+      // Per-call type string (Arguments{N})
+      const typeString = buildArgumentsTypeString(`Arguments${slotNum}`, call.argTypes);
+      const tsBytes = new TextEncoder().encode(typeString);
+      const argsTS = new Uint8Array(MAX_ARGS_TYPE_STRING_LEN);
+      argsTS.set(tsBytes.slice(0, MAX_ARGS_TYPE_STRING_LEN));
+      argsTypeStrings.push(argsTS);
+      argsTypeStringLengths.push(Math.min(tsBytes.length, MAX_ARGS_TYPE_STRING_LEN));
+
+      // Per-call Merkle proof
+      merkleProofArrays.push(merkleProofs[i].siblingPath);
+      merkleLeafIndices.push(merkleProofs[i].leafIndex);
+
+      // Per-call type hashes
+      fcTypeHashes.push(hexToBytes(computeFcTypeHashBytes(`FunctionCall${slotNum}`, call.argTypes)));
+      argsTypeHashesArr.push(hexToBytes(computeArgsTypeHashBytes(slotNum, call.argTypes)));
     }
-
-    // Shared type string (unified "Arguments" struct)
-    const typeString = buildArgumentsTypeString("Arguments", unifiedArgTypes);
-    const tsBytes = new TextEncoder().encode(typeString);
-    const argsTypeString = new Uint8Array(MAX_ARGS_TYPE_STRING_LEN);
-    argsTypeString.set(tsBytes.slice(0, MAX_ARGS_TYPE_STRING_LEN));
-
-    // Shared pre-computed type hashes (Approach 2)
-    const fcTypeHash = hexToBytes(computeFcTypeHashBytes("FunctionCall", unifiedArgTypes));
-    const argsTypeHash = hexToBytes(computeArgsTypeHashBytes(unifiedArgTypes));
 
     // Wallet name
     const walletNameBytes = new TextEncoder().encode(accountData.walletName);
@@ -383,12 +384,12 @@ export class MetaMaskEip712SigningDelegateV2
       isPublic: isPublicArr,
       hideMsgSender: hideMsgSenderArr,
       isStatic: isStaticArr,
-      argsTypeString,
-      argsTypeStringLength: Math.min(tsBytes.length, MAX_ARGS_TYPE_STRING_LEN),
-      merkleProof: merkleProof.siblingPath,
-      merkleLeafIndex: merkleProof.leafIndex,
-      fcTypeHash,
-      argsTypeHash,
+      argsTypeStrings,
+      argsTypeStringLengths,
+      merkleProofs: merkleProofArrays,
+      merkleLeafIndices,
+      fcTypeHashes,
+      argsTypeHashes: argsTypeHashesArr,
       walletName,
       walletNameLength: Math.min(
         walletNameBytes.length,
@@ -402,24 +403,23 @@ export class MetaMaskEip712SigningDelegateV2
   }
 
   /**
-   * Serialize V2 witness to capsule fields (175 Fields).
+   * Serialize V2 witness to capsule fields.
    *
-   * Layout:
-   *   [0-2]:     Signature (3)
-   *   [3-130]:   4 calls × 32 fields (128)
-   *   [131-162]: Shared type/proof data (32)
-   *   [163-174]: Metadata (12)
+   * Layout: 3 + N*32 (call data) + N*32 (type/proof per call) + 12 (metadata)
+   * Total: 15 + 64*N fields
+   * N=1: 79, N=2: 143, N=3: 207, N=4: 271
    */
   private serializeToCapsule(
     data: ReturnType<typeof MetaMaskEip712SigningDelegateV2.prototype.buildOracleData>,
+    callCount: number,
   ): Fr[] {
     const fields: Fr[] = [];
 
     // [0-2]: Signature (64 bytes -> 3 fields: 31+31+2)
     fields.push(...this.packBytes(data.ecdsaSignature, [31, 31, 2]));
 
-    // [3-130]: 4 calls, each 32 fields
-    for (let callIdx = 0; callIdx < ACCOUNT_MAX_CALLS_V2; callIdx++) {
+    // N calls, each 32 fields
+    for (let callIdx = 0; callIdx < callCount; callIdx++) {
       // Function signature (128 bytes -> 5 fields: 4×31 + 1×4)
       fields.push(
         ...this.packBytes(data.functionSignatures[callIdx], [
@@ -450,32 +450,34 @@ export class MetaMaskEip712SigningDelegateV2
       fields.push(Fr.ZERO);
     }
 
-    // [131-162]: Shared type/proof data (32 fields)
-    // Args type string (256 bytes -> 9 fields: 8×31 + 1×8)
-    fields.push(
-      ...this.packBytes(data.argsTypeString, [
-        31, 31, 31, 31, 31, 31, 31, 31, 8,
-      ]),
-    );
+    // N type/proof blocks, each 32 fields
+    for (let callIdx = 0; callIdx < callCount; callIdx++) {
+      // Args type string (256 bytes -> 9 fields: 8×31 + 1×8)
+      fields.push(
+        ...this.packBytes(data.argsTypeStrings[callIdx], [
+          31, 31, 31, 31, 31, 31, 31, 31, 8,
+        ]),
+      );
 
-    // Args type string length
-    fields.push(new Fr(data.argsTypeStringLength));
+      // Args type string length
+      fields.push(new Fr(data.argsTypeStringLengths[callIdx]));
 
-    // Merkle proof (17 fields)
-    for (let i = 0; i < MERKLE_DEPTH; i++) {
-      fields.push(data.merkleProof[i]);
+      // Merkle proof (17 fields)
+      for (let i = 0; i < MERKLE_DEPTH; i++) {
+        fields.push(data.merkleProofs[callIdx][i]);
+      }
+
+      // Merkle leaf index
+      fields.push(new Fr(data.merkleLeafIndices[callIdx]));
+
+      // FunctionCall type hash (32 bytes -> 2 fields: 31+1)
+      fields.push(...this.packBytes(data.fcTypeHashes[callIdx], [31, 1]));
+
+      // Arguments type hash (32 bytes -> 2 fields: 31+1)
+      fields.push(...this.packBytes(data.argsTypeHashes[callIdx], [31, 1]));
     }
 
-    // Merkle leaf index
-    fields.push(new Fr(data.merkleLeafIndex));
-
-    // FunctionCall type hash (32 bytes -> 2 fields: 31+1)
-    fields.push(...this.packBytes(data.fcTypeHash, [31, 1]));
-
-    // Arguments type hash (32 bytes -> 2 fields: 31+1)
-    fields.push(...this.packBytes(data.argsTypeHash, [31, 1]));
-
-    // [163-174]: Metadata (12 fields)
+    // Metadata (12 fields)
     // wallet_name (128 bytes -> 5 fields)
     fields.push(...this.packBytes(data.walletName, [31, 31, 31, 31, 4]));
 

@@ -4,10 +4,10 @@
  * Generates Poseidon2 Merkle trees for whitelisting valid type_hash(FunctionCall) values.
  *
  * Approach 2: leaves are keccak256(fc_encode_type) instead of keccak256(args_type_string).
- * - FunctionCall tree: fc_encode_type = FC_PRIMARY + args_type_string
- * - Arguments tree:    fc_encode_type = FC_AUTH_PRIMARY + args_type_string + AUTHWIT_APP_DOMAIN_DEF
+ * - FunctionCall1..4 trees: fc_encode_type = FC_PRIMARIES[slot] + args_type_string (per-slot)
+ * - Arguments tree:         fc_encode_type = FC_AUTH_PRIMARY + args_type_string + AUTHWIT_APP_DOMAIN_DEF
  *
- * For each tree (FunctionCall, Arguments):
+ * For each tree (FunctionCall1..4, Arguments):
  * - Enumerates all valid (arg_count, type_combination) pairs for 0..10 args × 3 types
  * - Computes keccak256(fc_encode_type) for each combination
  * - Converts to BN254 Field (mod p, truncating 2 MSBs)
@@ -37,9 +37,13 @@ const PADDED_SIZE = 1 << TREE_DEPTH; // 131072
 const BN254_FR_MODULUS =
   0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001n;
 
-// FC primary strings (must match Noir constants in eip712_v2.nr)
-const FC_PRIMARY =
-  "FunctionCall(bytes32 contract,string functionSignature,Arguments arguments,bool isPublic,bool hideMsgSender,bool isStatic)";
+// Per-slot FC primary strings (must match Noir constants in eip712_v2.nr)
+const FC_PRIMARIES: Record<number, string> = {
+  1: "FunctionCall1(bytes32 contract,string functionSignature,Arguments1 arguments,bool isPublic,bool hideMsgSender,bool isStatic)",
+  2: "FunctionCall2(bytes32 contract,string functionSignature,Arguments2 arguments,bool isPublic,bool hideMsgSender,bool isStatic)",
+  3: "FunctionCall3(bytes32 contract,string functionSignature,Arguments3 arguments,bool isPublic,bool hideMsgSender,bool isStatic)",
+  4: "FunctionCall4(bytes32 contract,string functionSignature,Arguments4 arguments,bool isPublic,bool hideMsgSender,bool isStatic)",
+};
 const FC_AUTH_PRIMARY =
   "FunctionCallAuthorization(AuthwitAppDomain appDomain,bytes32 contract,string functionSignature,Arguments arguments,bool isPublic)";
 const AUTHWIT_APP_DOMAIN_DEF =
@@ -48,15 +52,17 @@ const AUTHWIT_APP_DOMAIN_DEF =
 /**
  * Build the full FunctionCall encode_type for a given tree name and args type string.
  */
-function buildFcEncodeType(structName: string, argsTypeString: string): string {
-  switch (structName) {
-    case "FunctionCall":
-      return FC_PRIMARY + argsTypeString;
-    case "Arguments":
-      return FC_AUTH_PRIMARY + argsTypeString + AUTHWIT_APP_DOMAIN_DEF;
-    default:
-      throw new Error(`Unknown struct name: ${structName}`);
+function buildFcEncodeType(treeName: string, argsTypeString: string): string {
+  if (treeName === "Arguments") {
+    return FC_AUTH_PRIMARY + argsTypeString + AUTHWIT_APP_DOMAIN_DEF;
   }
+  // FunctionCall1..4
+  const slotNumber = parseInt(treeName.replace("FunctionCall", ""));
+  const primary = FC_PRIMARIES[slotNumber];
+  if (!primary) {
+    throw new Error(`Unknown tree name: ${treeName}`);
+  }
+  return primary + argsTypeString;
 }
 
 // =============================================================================
@@ -65,34 +71,34 @@ function buildFcEncodeType(structName: string, argsTypeString: string): string {
 
 /**
  * Build the Arguments type string for a given type combination.
- * Always uses "Arguments" as the struct name.
- * E.g. "Arguments(bytes32 argument1,uint256 argument2)"
+ * E.g. "Arguments1(bytes32 argument1,uint256 argument2)"
  */
 function buildTypeString(
+  structName: string,
   types: (typeof ARGUMENT_TYPES)[number][],
 ): string {
   if (types.length === 0) {
-    return "Arguments()";
+    return `${structName}()`;
   }
   const fields = types
     .map((type, i) => `${type} argument${i + 1}`)
     .join(",");
-  return `Arguments(${fields})`;
+  return `${structName}(${fields})`;
 }
 
 /**
  * Enumerate all valid type combinations for 0..maxArgs arguments × 3 types.
- * Always uses "Arguments" as the struct name.
  * Returns both the type string and the argCount for each entry.
  */
 function enumerateAllTypeStrings(
+  argsStructName: string,
   maxArgs: number = MAX_ARGS,
 ): { typeString: string; argCount: number }[] {
   const results: { typeString: string; argCount: number }[] = [];
 
   for (let argCount = 0; argCount <= maxArgs; argCount++) {
     if (argCount === 0) {
-      results.push({ typeString: buildTypeString([]), argCount: 0 });
+      results.push({ typeString: buildTypeString(argsStructName, []), argCount: 0 });
       continue;
     }
 
@@ -105,7 +111,7 @@ function enumerateAllTypeStrings(
         types.push(ARGUMENT_TYPES[remaining % 3]);
         remaining = Math.floor(remaining / 3);
       }
-      results.push({ typeString: buildTypeString(types), argCount });
+      results.push({ typeString: buildTypeString(argsStructName, types), argCount });
     }
   }
 
@@ -146,13 +152,15 @@ interface TreeData {
 }
 
 /**
- * Generate a Merkle tree for a given struct name.
+ * Generate a Merkle tree for a given tree name and args struct name.
+ * treeName: "FunctionCall1".."FunctionCall4" or "Arguments" (authwit)
+ * argsStructName: "Arguments1".."Arguments4" for FC trees, "Arguments" for authwit
  */
-async function generateTree(structName: string): Promise<TreeData> {
-  console.log(`\nGenerating tree for ${structName}...`);
+async function generateTree(treeName: string, argsStructName: string): Promise<TreeData> {
+  console.log(`\nGenerating tree for ${treeName} (args: ${argsStructName})...`);
 
-  // 1. Enumerate all args type strings (always "Arguments")
-  const argsTypeEntries = enumerateAllTypeStrings();
+  // 1. Enumerate all args type strings with the appropriate struct name
+  const argsTypeEntries = enumerateAllTypeStrings(argsStructName);
   console.log(`  Total type strings: ${argsTypeEntries.length}`);
 
   // 2. Compute fc_encode_type hashes and convert to Fields (Approach 2)
@@ -161,7 +169,7 @@ async function generateTree(structName: string): Promise<TreeData> {
   const leafFields: Fr[] = [];
 
   for (const { typeString: argsTS, argCount } of argsTypeEntries) {
-    const fcEncodeType = buildFcEncodeType(structName, argsTS);
+    const fcEncodeType = buildFcEncodeType(treeName, argsTS);
     const hash = computeStringHash(fcEncodeType);
     const field = hashToField(hash);
     typeStringToField.set(argsTS, field);
@@ -197,7 +205,7 @@ async function generateTree(structName: string): Promise<TreeData> {
   }
 
   return {
-    structName,
+    structName: treeName,
     root,
     depth: TREE_DEPTH,
     proofs,
@@ -234,11 +242,15 @@ function outputNoirConstants(trees: TreeData[]): void {
 
   console.log(`pub global MERKLE_DEPTH: u32 = ${TREE_DEPTH};\n`);
 
+  const nameMap: Record<string, string> = {
+    FunctionCall1: "MERKLE_ROOT_FC_1",
+    FunctionCall2: "MERKLE_ROOT_FC_2",
+    FunctionCall3: "MERKLE_ROOT_FC_3",
+    FunctionCall4: "MERKLE_ROOT_FC_4",
+    Arguments: "MERKLE_ROOT_FC_AUTH",
+  };
+
   for (const tree of trees) {
-    const nameMap: Record<string, string> = {
-      FunctionCall: "MERKLE_ROOT_FC",
-      Arguments: "MERKLE_ROOT_FC_AUTH",
-    };
     const name = nameMap[tree.structName] || `MERKLE_ROOT_${tree.structName.toUpperCase()}`;
     console.log(formatNoirRoot(name, tree.root));
   }
@@ -252,12 +264,16 @@ function outputTypeScriptData(trees: TreeData[]): void {
   console.log("// TypeScript Data (for merkle-tree-data.ts)");
   console.log("// =============================================================================\n");
 
+  const nameMap: Record<string, string> = {
+    FunctionCall1: "MERKLE_ROOT_FC_1",
+    FunctionCall2: "MERKLE_ROOT_FC_2",
+    FunctionCall3: "MERKLE_ROOT_FC_3",
+    FunctionCall4: "MERKLE_ROOT_FC_4",
+    Arguments: "MERKLE_ROOT_FC_AUTH",
+  };
+
   console.log("// Merkle roots");
   for (const tree of trees) {
-    const nameMap: Record<string, string> = {
-      FunctionCall: "MERKLE_ROOT_FC",
-      Arguments: "MERKLE_ROOT_FC_AUTH",
-    };
     const name = nameMap[tree.structName] || `MERKLE_ROOT_${tree.structName.toUpperCase()}`;
     console.log(`export const ${name} = "${tree.root.toString()}" as const;`);
   }
@@ -282,10 +298,13 @@ async function main() {
   }
   console.log(`Total unique leaves per tree: ${totalLeaves}`);
 
-  // Generate trees
+  // Generate trees (4 per-slot FC trees + 1 authwit tree)
   const trees = await Promise.all([
-    generateTree("FunctionCall"),
-    generateTree("Arguments"),
+    generateTree("FunctionCall1", "Arguments1"),
+    generateTree("FunctionCall2", "Arguments2"),
+    generateTree("FunctionCall3", "Arguments3"),
+    generateTree("FunctionCall4", "Arguments4"),
+    generateTree("Arguments", "Arguments"),
   ]);
 
   // Output constants

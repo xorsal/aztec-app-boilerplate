@@ -6,7 +6,8 @@
  * display in MetaMask (e.g., addresses as bytes32 hex instead of uint256 decimals).
  *
  * Key differences from V1:
- * - 4-call entrypoint with unified FunctionCall->Arguments type
+ * - Per-call-count entrypoints (entrypoint_1 through entrypoint_4)
+ * - Per-slot FunctionCallN->ArgumentsN types
  * - Variable argument types per function call (not fixed uint256[])
  * - Merkle tree whitelist constraining valid type_hash(FunctionCall) values
  * - AccountData and TxMetadata sub-structs in the authorization message
@@ -38,17 +39,24 @@ pub contract Eip712AccountV2 {
 
     use crate::ecdsa_public_key_note::EcdsaPublicKeyNote;
     use crate::eip712_v2::{
-        AppPayload2, ACCOUNT_MAX_CALLS, APP_PAYLOAD_SERIALIZED_LEN,
-        MERKLE_ROOT_FC, MERKLE_ROOT_FC_AUTH,
-        Eip712WitnessV2_2, Eip712AuthwitWitnessV2,
+        AppPayload1, AppPayload2, AppPayload3, AppPayload4,
+        APP_PAYLOAD_1_SERIALIZED_LEN, APP_PAYLOAD_2_SERIALIZED_LEN,
+        APP_PAYLOAD_3_SERIALIZED_LEN, APP_PAYLOAD_4_SERIALIZED_LEN,
+        MERKLE_ROOT_FC_AUTH,
+        Eip712WitnessV2_1, Eip712WitnessV2_2, Eip712WitnessV2_3, Eip712WitnessV2_4,
+        Eip712AuthwitWitnessV2,
+        load_eip712_witness_v2_1, load_eip712_witness_v2_2,
+        load_eip712_witness_v2_3, load_eip712_witness_v2_4,
+        load_eip712_authwit_witness_v2,
+        build_encode_type_entrypoint_1, build_encode_type_entrypoint_2,
+        build_encode_type_entrypoint_3, build_encode_type_entrypoint_4,
+        get_merkle_root_fc,
         compute_aztec_args_hash, compute_eip712_payload, compute_function_selector,
         compute_inner_hash, type_hash_to_field,
         verify_arguments_whitelist, hash_struct_arguments,
         hash_struct_function_call_v2, hash_struct_account_data, hash_struct_tx_metadata,
         hash_struct_authwit_app_domain, hash_string, field_to_bytes32,
-        build_encode_type_entrypoint,
         extract_args_hash, extract_function_selector, extract_target_address, extract_is_public,
-        load_eip712_witness_v2_2, load_eip712_authwit_witness_v2,
     };
 
     // =========================================================================
@@ -94,13 +102,185 @@ pub contract Eip712AccountV2 {
     }
 
     // =========================================================================
-    // Entrypoint (4-call unified FunctionCall type with variable argument types)
+    // Entrypoint_1 (1 call)
     // =========================================================================
 
     #[external("private")]
     #[noinitcheck]
     #[allow_phase_change]
-    fn entrypoint(app_payload: AppPayload2, fee_payment_method: u8, cancellable: bool) {
+    fn entrypoint_1(app_payload: AppPayload1, fee_payment_method: u8, cancellable: bool) {
+        // Safety: The sender for tags is only used for unconstrained tagging
+        unsafe { set_sender_for_tags(self.address) };
+
+        let public_key = self.storage.signing_public_key.get_note();
+
+        // Safety: Capsule data will be validated against AppPayload below
+        let witness: Eip712WitnessV2_1 = unsafe {
+            load_eip712_witness_v2_1(self.address).expect(
+                f"EIP-712 V2 witness capsule not found",
+            )
+        };
+
+        let mut ecdsa_signature: [u8; 64] = [0; 64];
+        for i in 0..32 {
+            ecdsa_signature[i] = witness.signature_r[i];
+            ecdsa_signature[32 + i] = witness.signature_s[i];
+        }
+
+        let serialized_payload: [Field; APP_PAYLOAD_1_SERIALIZED_LEN] = app_payload.serialize();
+
+        let mut call_hashes: [[u8; 32]; 1] = [[0; 32]; 1];
+        let mut has_any_call = false;
+
+        for call_idx in 0..1 {
+            let stored_target = extract_target_address(serialized_payload, call_idx);
+
+            // Verify FC type_hash via per-slot Merkle tree
+            let fc_type_hash_field = type_hash_to_field(witness.fc_type_hashes[call_idx]);
+            verify_arguments_whitelist(
+                fc_type_hash_field,
+                witness.merkle_proofs[call_idx],
+                witness.merkle_leaf_indices[call_idx],
+                get_merkle_root_fc(call_idx),
+            );
+
+            if stored_target != 0 {
+                has_any_call = true;
+
+                assert(
+                    witness.target_addresses[call_idx] == stored_target,
+                    "V2 target_address mismatch with AppPayload",
+                );
+
+                let computed_selector = compute_function_selector(
+                    witness.function_signatures[call_idx],
+                    witness.signature_lengths[call_idx],
+                );
+                let stored_selector = extract_function_selector(serialized_payload, call_idx);
+                assert(
+                    computed_selector == stored_selector,
+                    "V2 function_selector mismatch with AppPayload",
+                );
+
+                let is_public = extract_is_public(serialized_payload, call_idx);
+                let computed_args_hash = compute_aztec_args_hash(
+                    witness.function_args[call_idx],
+                    witness.args_lengths[call_idx],
+                    is_public,
+                    computed_selector as Field,
+                );
+                let stored_args_hash = extract_args_hash(serialized_payload, call_idx);
+                assert(
+                    computed_args_hash == stored_args_hash,
+                    "V2 args_hash mismatch with AppPayload",
+                );
+
+                let args_struct_hash = hash_struct_arguments(
+                    witness.args_type_hashes[call_idx],
+                    witness.function_args[call_idx],
+                    witness.args_lengths[call_idx],
+                );
+
+                let target_bytes = field_to_bytes32(witness.target_addresses[call_idx]);
+                let sig_hash = hash_string(
+                    witness.function_signatures[call_idx],
+                    witness.signature_lengths[call_idx],
+                );
+                call_hashes[call_idx] = hash_struct_function_call_v2(
+                    witness.fc_type_hashes[call_idx],
+                    target_bytes,
+                    sig_hash,
+                    args_struct_hash,
+                    witness.is_public[call_idx],
+                    witness.hide_msg_sender[call_idx],
+                    witness.is_static[call_idx],
+                );
+            } else {
+                let empty_args: [Field; 20] = [0; 20];
+                let empty_args_struct_hash = hash_struct_arguments(
+                    witness.args_type_hashes[call_idx],
+                    empty_args,
+                    0,
+                );
+                let zero_bytes: [u8; 32] = [0; 32];
+                let empty_sig_hash = hash_string([0; 128], 0);
+                call_hashes[call_idx] = hash_struct_function_call_v2(
+                    witness.fc_type_hashes[call_idx],
+                    zero_bytes,
+                    empty_sig_hash,
+                    empty_args_struct_hash,
+                    false,
+                    false,
+                    false,
+                );
+            }
+        }
+
+        assert(has_any_call, "AppPayload must have at least one function call");
+
+        // Build encode_type for EntrypointAuthorization
+        let (entrypoint_encode_type, entrypoint_encode_type_len) = build_encode_type_entrypoint_1(
+            witness.args_type_strings[0],
+            witness.args_type_string_lengths[0],
+        );
+        let entrypoint_type_hash = keccak256::keccak256(entrypoint_encode_type, entrypoint_encode_type_len);
+
+        // Compute hashStruct(AccountData)
+        let account_address_bytes = field_to_bytes32(witness.account_address);
+        let account_data_hash = hash_struct_account_data(
+            account_address_bytes,
+            witness.wallet_name,
+            witness.wallet_name_length,
+            witness.wallet_version,
+            witness.wallet_version_length,
+        );
+
+        // Compute hashStruct(TxMetadata)
+        let tx_nonce_bytes = field_to_bytes32(app_payload.tx_nonce);
+        let tx_metadata_hash = hash_struct_tx_metadata(fee_payment_method, cancellable, tx_nonce_bytes);
+
+        // hashStruct(EntrypointAuthorization): typeHash + accountData + 1 fc + txMetadata = 128 bytes
+        let mut entrypoint_data: [u8; 128] = [0; 128];
+        for i in 0..32 { entrypoint_data[i] = entrypoint_type_hash[i]; }
+        for i in 0..32 { entrypoint_data[32 + i] = account_data_hash[i]; }
+        for call_idx in 0..1 {
+            for i in 0..32 { entrypoint_data[64 + call_idx * 32 + i] = call_hashes[call_idx][i]; }
+        }
+        for i in 0..32 { entrypoint_data[96 + i] = tx_metadata_hash[i]; }
+        let message_hash = keccak256::keccak256(entrypoint_data, 128);
+
+        let eip712_payload = compute_eip712_payload(DOMAIN_SEPARATOR, message_hash);
+
+        assert(
+            std::ecdsa_secp256k1::verify_signature(
+                public_key.x, public_key.y, ecdsa_signature, eip712_payload,
+            ),
+            "Invalid EIP-712 V2 signature",
+        );
+
+        if fee_payment_method == 1 {
+            self.context.set_as_fee_payer();
+            self.context.end_setup();
+        } else if fee_payment_method == 2 {
+            self.context.set_as_fee_payer();
+        }
+
+        app_payload.execute_calls(self.context);
+
+        if cancellable {
+            let tx_nullifier = poseidon2_hash_with_separator([app_payload.tx_nonce], DOM_SEP__TX_NULLIFIER);
+            self.context.push_nullifier(tx_nullifier);
+        }
+    }
+
+    // =========================================================================
+    // Entrypoint_2 (2 calls)
+    // =========================================================================
+
+    #[external("private")]
+    #[noinitcheck]
+    #[allow_phase_change]
+    fn entrypoint_2(app_payload: AppPayload2, fee_payment_method: u8, cancellable: bool) {
         // Safety: The sender for tags is only used for unconstrained tagging
         unsafe { set_sender_for_tags(self.address) };
 
@@ -119,37 +299,30 @@ pub contract Eip712AccountV2 {
             ecdsa_signature[32 + i] = witness.signature_s[i];
         }
 
-        let serialized_payload: [Field; APP_PAYLOAD_SERIALIZED_LEN] = app_payload.serialize();
+        let serialized_payload: [Field; APP_PAYLOAD_2_SERIALIZED_LEN] = app_payload.serialize();
 
-        // =====================================================================
-        // Verify all calls and compute EIP-712 hashes
-        // =====================================================================
-
-        // Verify shared FunctionCall type_hash via Merkle tree ONCE (all calls share the same type)
-        let fc_type_hash_field = type_hash_to_field(witness.fc_type_hash);
-        verify_arguments_whitelist(
-            fc_type_hash_field,
-            witness.merkle_proof,
-            witness.merkle_leaf_index,
-            MERKLE_ROOT_FC,
-        );
-
-        let mut call_hashes: [[u8; 32]; ACCOUNT_MAX_CALLS] = [[0; 32]; ACCOUNT_MAX_CALLS];
+        let mut call_hashes: [[u8; 32]; 2] = [[0; 32]; 2];
         let mut has_any_call = false;
 
-        for call_idx in 0..ACCOUNT_MAX_CALLS {
+        for call_idx in 0..2 {
             let stored_target = extract_target_address(serialized_payload, call_idx);
+
+            let fc_type_hash_field = type_hash_to_field(witness.fc_type_hashes[call_idx]);
+            verify_arguments_whitelist(
+                fc_type_hash_field,
+                witness.merkle_proofs[call_idx],
+                witness.merkle_leaf_indices[call_idx],
+                get_merkle_root_fc(call_idx),
+            );
 
             if stored_target != 0 {
                 has_any_call = true;
 
-                // 1. Verify target address matches
                 assert(
                     witness.target_addresses[call_idx] == stored_target,
                     "V2 target_address mismatch with AppPayload",
                 );
 
-                // 2. Compute selector from function signature
                 let computed_selector = compute_function_selector(
                     witness.function_signatures[call_idx],
                     witness.signature_lengths[call_idx],
@@ -160,7 +333,6 @@ pub contract Eip712AccountV2 {
                     "V2 function_selector mismatch with AppPayload",
                 );
 
-                // 3. Verify args_hash matches
                 let is_public = extract_is_public(serialized_payload, call_idx);
                 let computed_args_hash = compute_aztec_args_hash(
                     witness.function_args[call_idx],
@@ -174,21 +346,19 @@ pub contract Eip712AccountV2 {
                     "V2 args_hash mismatch with AppPayload",
                 );
 
-                // 4. Compute hashStruct(Arguments) using shared type_hash
                 let args_struct_hash = hash_struct_arguments(
-                    witness.args_type_hash,
+                    witness.args_type_hashes[call_idx],
                     witness.function_args[call_idx],
                     witness.args_lengths[call_idx],
                 );
 
-                // 5. Compute hashStruct(FunctionCall) using shared type_hash
                 let target_bytes = field_to_bytes32(witness.target_addresses[call_idx]);
                 let sig_hash = hash_string(
                     witness.function_signatures[call_idx],
                     witness.signature_lengths[call_idx],
                 );
                 call_hashes[call_idx] = hash_struct_function_call_v2(
-                    witness.fc_type_hash,
+                    witness.fc_type_hashes[call_idx],
                     target_bytes,
                     sig_hash,
                     args_struct_hash,
@@ -197,19 +367,16 @@ pub contract Eip712AccountV2 {
                     witness.is_static[call_idx],
                 );
             } else {
-                // Empty call slot - still needs valid EIP-712 hash
                 let empty_args: [Field; 20] = [0; 20];
                 let empty_args_struct_hash = hash_struct_arguments(
-                    witness.args_type_hash,
+                    witness.args_type_hashes[call_idx],
                     empty_args,
                     0,
                 );
-
                 let zero_bytes: [u8; 32] = [0; 32];
                 let empty_sig_hash = hash_string([0; 128], 0);
-
                 call_hashes[call_idx] = hash_struct_function_call_v2(
-                    witness.fc_type_hash,
+                    witness.fc_type_hashes[call_idx],
                     zero_bytes,
                     empty_sig_hash,
                     empty_args_struct_hash,
@@ -222,69 +389,41 @@ pub contract Eip712AccountV2 {
 
         assert(has_any_call, "AppPayload must have at least one function call");
 
-        // =====================================================================
-        // Compute EntrypointAuthorization hash
-        // =====================================================================
-
-        // Build full encode_type for EntrypointAuthorization (single shared args type)
-        let (entrypoint_encode_type, entrypoint_encode_type_len) = build_encode_type_entrypoint(
-            witness.args_type_string,
-            witness.args_type_string_length,
+        let (entrypoint_encode_type, entrypoint_encode_type_len) = build_encode_type_entrypoint_2(
+            witness.args_type_strings[0], witness.args_type_string_lengths[0],
+            witness.args_type_strings[1], witness.args_type_string_lengths[1],
         );
         let entrypoint_type_hash = keccak256::keccak256(entrypoint_encode_type, entrypoint_encode_type_len);
 
-        // Compute hashStruct(AccountData)
         let account_address_bytes = field_to_bytes32(witness.account_address);
         let account_data_hash = hash_struct_account_data(
             account_address_bytes,
-            witness.wallet_name,
-            witness.wallet_name_length,
-            witness.wallet_version,
-            witness.wallet_version_length,
+            witness.wallet_name, witness.wallet_name_length,
+            witness.wallet_version, witness.wallet_version_length,
         );
 
-        // Compute hashStruct(TxMetadata)
         let tx_nonce_bytes = field_to_bytes32(app_payload.tx_nonce);
-        let tx_metadata_hash = hash_struct_tx_metadata(
-            fee_payment_method,
-            cancellable,
-            tx_nonce_bytes,
-        );
+        let tx_metadata_hash = hash_struct_tx_metadata(fee_payment_method, cancellable, tx_nonce_bytes);
 
-        // Compute hashStruct(EntrypointAuthorization)
-        // typeHash || accountDataHash || fc1Hash || fc2Hash || fc3Hash || fc4Hash || txMetadataHash
-        let mut entrypoint_data: [u8; 224] = [0; 224];
-        for i in 0..32 {
-            entrypoint_data[i] = entrypoint_type_hash[i];
+        // hashStruct: typeHash + accountData + 2 fc + txMetadata = 160 bytes
+        let mut entrypoint_data: [u8; 160] = [0; 160];
+        for i in 0..32 { entrypoint_data[i] = entrypoint_type_hash[i]; }
+        for i in 0..32 { entrypoint_data[32 + i] = account_data_hash[i]; }
+        for call_idx in 0..2 {
+            for i in 0..32 { entrypoint_data[64 + call_idx * 32 + i] = call_hashes[call_idx][i]; }
         }
-        for i in 0..32 {
-            entrypoint_data[32 + i] = account_data_hash[i];
-        }
-        for call_idx in 0..ACCOUNT_MAX_CALLS {
-            for i in 0..32 {
-                entrypoint_data[64 + call_idx * 32 + i] = call_hashes[call_idx][i];
-            }
-        }
-        for i in 0..32 {
-            entrypoint_data[192 + i] = tx_metadata_hash[i];
-        }
-        let message_hash = keccak256::keccak256(entrypoint_data, 224);
+        for i in 0..32 { entrypoint_data[128 + i] = tx_metadata_hash[i]; }
+        let message_hash = keccak256::keccak256(entrypoint_data, 160);
 
-        // Compute final EIP-712 payload
         let eip712_payload = compute_eip712_payload(DOMAIN_SEPARATOR, message_hash);
 
-        // Verify ECDSA signature
         assert(
             std::ecdsa_secp256k1::verify_signature(
-                public_key.x,
-                public_key.y,
-                ecdsa_signature,
-                eip712_payload,
+                public_key.x, public_key.y, ecdsa_signature, eip712_payload,
             ),
             "Invalid EIP-712 V2 signature",
         );
 
-        // Handle fee payment
         if fee_payment_method == 1 {
             self.context.set_as_fee_payer();
             self.context.end_setup();
@@ -292,21 +431,351 @@ pub contract Eip712AccountV2 {
             self.context.set_as_fee_payer();
         }
 
-        // Execute the calls
         app_payload.execute_calls(self.context);
 
-        // Handle cancellability
         if cancellable {
-            let tx_nullifier = poseidon2_hash_with_separator(
-                [app_payload.tx_nonce],
-                DOM_SEP__TX_NULLIFIER,
-            );
+            let tx_nullifier = poseidon2_hash_with_separator([app_payload.tx_nonce], DOM_SEP__TX_NULLIFIER);
             self.context.push_nullifier(tx_nullifier);
         }
     }
 
     // =========================================================================
-    // Authwit Verification (with variable argument types)
+    // Entrypoint_3 (3 calls)
+    // =========================================================================
+
+    #[external("private")]
+    #[noinitcheck]
+    #[allow_phase_change]
+    fn entrypoint_3(app_payload: AppPayload3, fee_payment_method: u8, cancellable: bool) {
+        // Safety: The sender for tags is only used for unconstrained tagging
+        unsafe { set_sender_for_tags(self.address) };
+
+        let public_key = self.storage.signing_public_key.get_note();
+
+        // Safety: Capsule data will be validated against AppPayload below
+        let witness: Eip712WitnessV2_3 = unsafe {
+            load_eip712_witness_v2_3(self.address).expect(
+                f"EIP-712 V2 witness capsule not found",
+            )
+        };
+
+        let mut ecdsa_signature: [u8; 64] = [0; 64];
+        for i in 0..32 {
+            ecdsa_signature[i] = witness.signature_r[i];
+            ecdsa_signature[32 + i] = witness.signature_s[i];
+        }
+
+        let serialized_payload: [Field; APP_PAYLOAD_3_SERIALIZED_LEN] = app_payload.serialize();
+
+        let mut call_hashes: [[u8; 32]; 3] = [[0; 32]; 3];
+        let mut has_any_call = false;
+
+        for call_idx in 0..3 {
+            let stored_target = extract_target_address(serialized_payload, call_idx);
+
+            let fc_type_hash_field = type_hash_to_field(witness.fc_type_hashes[call_idx]);
+            verify_arguments_whitelist(
+                fc_type_hash_field,
+                witness.merkle_proofs[call_idx],
+                witness.merkle_leaf_indices[call_idx],
+                get_merkle_root_fc(call_idx),
+            );
+
+            if stored_target != 0 {
+                has_any_call = true;
+
+                assert(
+                    witness.target_addresses[call_idx] == stored_target,
+                    "V2 target_address mismatch with AppPayload",
+                );
+
+                let computed_selector = compute_function_selector(
+                    witness.function_signatures[call_idx],
+                    witness.signature_lengths[call_idx],
+                );
+                let stored_selector = extract_function_selector(serialized_payload, call_idx);
+                assert(
+                    computed_selector == stored_selector,
+                    "V2 function_selector mismatch with AppPayload",
+                );
+
+                let is_public = extract_is_public(serialized_payload, call_idx);
+                let computed_args_hash = compute_aztec_args_hash(
+                    witness.function_args[call_idx],
+                    witness.args_lengths[call_idx],
+                    is_public,
+                    computed_selector as Field,
+                );
+                let stored_args_hash = extract_args_hash(serialized_payload, call_idx);
+                assert(
+                    computed_args_hash == stored_args_hash,
+                    "V2 args_hash mismatch with AppPayload",
+                );
+
+                let args_struct_hash = hash_struct_arguments(
+                    witness.args_type_hashes[call_idx],
+                    witness.function_args[call_idx],
+                    witness.args_lengths[call_idx],
+                );
+
+                let target_bytes = field_to_bytes32(witness.target_addresses[call_idx]);
+                let sig_hash = hash_string(
+                    witness.function_signatures[call_idx],
+                    witness.signature_lengths[call_idx],
+                );
+                call_hashes[call_idx] = hash_struct_function_call_v2(
+                    witness.fc_type_hashes[call_idx],
+                    target_bytes,
+                    sig_hash,
+                    args_struct_hash,
+                    witness.is_public[call_idx],
+                    witness.hide_msg_sender[call_idx],
+                    witness.is_static[call_idx],
+                );
+            } else {
+                let empty_args: [Field; 20] = [0; 20];
+                let empty_args_struct_hash = hash_struct_arguments(
+                    witness.args_type_hashes[call_idx],
+                    empty_args,
+                    0,
+                );
+                let zero_bytes: [u8; 32] = [0; 32];
+                let empty_sig_hash = hash_string([0; 128], 0);
+                call_hashes[call_idx] = hash_struct_function_call_v2(
+                    witness.fc_type_hashes[call_idx],
+                    zero_bytes,
+                    empty_sig_hash,
+                    empty_args_struct_hash,
+                    false,
+                    false,
+                    false,
+                );
+            }
+        }
+
+        assert(has_any_call, "AppPayload must have at least one function call");
+
+        let (entrypoint_encode_type, entrypoint_encode_type_len) = build_encode_type_entrypoint_3(
+            witness.args_type_strings[0], witness.args_type_string_lengths[0],
+            witness.args_type_strings[1], witness.args_type_string_lengths[1],
+            witness.args_type_strings[2], witness.args_type_string_lengths[2],
+        );
+        let entrypoint_type_hash = keccak256::keccak256(entrypoint_encode_type, entrypoint_encode_type_len);
+
+        let account_address_bytes = field_to_bytes32(witness.account_address);
+        let account_data_hash = hash_struct_account_data(
+            account_address_bytes,
+            witness.wallet_name, witness.wallet_name_length,
+            witness.wallet_version, witness.wallet_version_length,
+        );
+
+        let tx_nonce_bytes = field_to_bytes32(app_payload.tx_nonce);
+        let tx_metadata_hash = hash_struct_tx_metadata(fee_payment_method, cancellable, tx_nonce_bytes);
+
+        // hashStruct: typeHash + accountData + 3 fc + txMetadata = 192 bytes
+        let mut entrypoint_data: [u8; 192] = [0; 192];
+        for i in 0..32 { entrypoint_data[i] = entrypoint_type_hash[i]; }
+        for i in 0..32 { entrypoint_data[32 + i] = account_data_hash[i]; }
+        for call_idx in 0..3 {
+            for i in 0..32 { entrypoint_data[64 + call_idx * 32 + i] = call_hashes[call_idx][i]; }
+        }
+        for i in 0..32 { entrypoint_data[160 + i] = tx_metadata_hash[i]; }
+        let message_hash = keccak256::keccak256(entrypoint_data, 192);
+
+        let eip712_payload = compute_eip712_payload(DOMAIN_SEPARATOR, message_hash);
+
+        assert(
+            std::ecdsa_secp256k1::verify_signature(
+                public_key.x, public_key.y, ecdsa_signature, eip712_payload,
+            ),
+            "Invalid EIP-712 V2 signature",
+        );
+
+        if fee_payment_method == 1 {
+            self.context.set_as_fee_payer();
+            self.context.end_setup();
+        } else if fee_payment_method == 2 {
+            self.context.set_as_fee_payer();
+        }
+
+        app_payload.execute_calls(self.context);
+
+        if cancellable {
+            let tx_nullifier = poseidon2_hash_with_separator([app_payload.tx_nonce], DOM_SEP__TX_NULLIFIER);
+            self.context.push_nullifier(tx_nullifier);
+        }
+    }
+
+    // =========================================================================
+    // Entrypoint_4 (4 calls)
+    // =========================================================================
+
+    #[external("private")]
+    #[noinitcheck]
+    #[allow_phase_change]
+    fn entrypoint_4(app_payload: AppPayload4, fee_payment_method: u8, cancellable: bool) {
+        // Safety: The sender for tags is only used for unconstrained tagging
+        unsafe { set_sender_for_tags(self.address) };
+
+        let public_key = self.storage.signing_public_key.get_note();
+
+        // Safety: Capsule data will be validated against AppPayload below
+        let witness: Eip712WitnessV2_4 = unsafe {
+            load_eip712_witness_v2_4(self.address).expect(
+                f"EIP-712 V2 witness capsule not found",
+            )
+        };
+
+        let mut ecdsa_signature: [u8; 64] = [0; 64];
+        for i in 0..32 {
+            ecdsa_signature[i] = witness.signature_r[i];
+            ecdsa_signature[32 + i] = witness.signature_s[i];
+        }
+
+        let serialized_payload: [Field; APP_PAYLOAD_4_SERIALIZED_LEN] = app_payload.serialize();
+
+        let mut call_hashes: [[u8; 32]; 4] = [[0; 32]; 4];
+        let mut has_any_call = false;
+
+        for call_idx in 0..4 {
+            let stored_target = extract_target_address(serialized_payload, call_idx);
+
+            let fc_type_hash_field = type_hash_to_field(witness.fc_type_hashes[call_idx]);
+            verify_arguments_whitelist(
+                fc_type_hash_field,
+                witness.merkle_proofs[call_idx],
+                witness.merkle_leaf_indices[call_idx],
+                get_merkle_root_fc(call_idx),
+            );
+
+            if stored_target != 0 {
+                has_any_call = true;
+
+                assert(
+                    witness.target_addresses[call_idx] == stored_target,
+                    "V2 target_address mismatch with AppPayload",
+                );
+
+                let computed_selector = compute_function_selector(
+                    witness.function_signatures[call_idx],
+                    witness.signature_lengths[call_idx],
+                );
+                let stored_selector = extract_function_selector(serialized_payload, call_idx);
+                assert(
+                    computed_selector == stored_selector,
+                    "V2 function_selector mismatch with AppPayload",
+                );
+
+                let is_public = extract_is_public(serialized_payload, call_idx);
+                let computed_args_hash = compute_aztec_args_hash(
+                    witness.function_args[call_idx],
+                    witness.args_lengths[call_idx],
+                    is_public,
+                    computed_selector as Field,
+                );
+                let stored_args_hash = extract_args_hash(serialized_payload, call_idx);
+                assert(
+                    computed_args_hash == stored_args_hash,
+                    "V2 args_hash mismatch with AppPayload",
+                );
+
+                let args_struct_hash = hash_struct_arguments(
+                    witness.args_type_hashes[call_idx],
+                    witness.function_args[call_idx],
+                    witness.args_lengths[call_idx],
+                );
+
+                let target_bytes = field_to_bytes32(witness.target_addresses[call_idx]);
+                let sig_hash = hash_string(
+                    witness.function_signatures[call_idx],
+                    witness.signature_lengths[call_idx],
+                );
+                call_hashes[call_idx] = hash_struct_function_call_v2(
+                    witness.fc_type_hashes[call_idx],
+                    target_bytes,
+                    sig_hash,
+                    args_struct_hash,
+                    witness.is_public[call_idx],
+                    witness.hide_msg_sender[call_idx],
+                    witness.is_static[call_idx],
+                );
+            } else {
+                let empty_args: [Field; 20] = [0; 20];
+                let empty_args_struct_hash = hash_struct_arguments(
+                    witness.args_type_hashes[call_idx],
+                    empty_args,
+                    0,
+                );
+                let zero_bytes: [u8; 32] = [0; 32];
+                let empty_sig_hash = hash_string([0; 128], 0);
+                call_hashes[call_idx] = hash_struct_function_call_v2(
+                    witness.fc_type_hashes[call_idx],
+                    zero_bytes,
+                    empty_sig_hash,
+                    empty_args_struct_hash,
+                    false,
+                    false,
+                    false,
+                );
+            }
+        }
+
+        assert(has_any_call, "AppPayload must have at least one function call");
+
+        let (entrypoint_encode_type, entrypoint_encode_type_len) = build_encode_type_entrypoint_4(
+            witness.args_type_strings[0], witness.args_type_string_lengths[0],
+            witness.args_type_strings[1], witness.args_type_string_lengths[1],
+            witness.args_type_strings[2], witness.args_type_string_lengths[2],
+            witness.args_type_strings[3], witness.args_type_string_lengths[3],
+        );
+        let entrypoint_type_hash = keccak256::keccak256(entrypoint_encode_type, entrypoint_encode_type_len);
+
+        let account_address_bytes = field_to_bytes32(witness.account_address);
+        let account_data_hash = hash_struct_account_data(
+            account_address_bytes,
+            witness.wallet_name, witness.wallet_name_length,
+            witness.wallet_version, witness.wallet_version_length,
+        );
+
+        let tx_nonce_bytes = field_to_bytes32(app_payload.tx_nonce);
+        let tx_metadata_hash = hash_struct_tx_metadata(fee_payment_method, cancellable, tx_nonce_bytes);
+
+        // hashStruct: typeHash + accountData + 4 fc + txMetadata = 224 bytes
+        let mut entrypoint_data: [u8; 224] = [0; 224];
+        for i in 0..32 { entrypoint_data[i] = entrypoint_type_hash[i]; }
+        for i in 0..32 { entrypoint_data[32 + i] = account_data_hash[i]; }
+        for call_idx in 0..4 {
+            for i in 0..32 { entrypoint_data[64 + call_idx * 32 + i] = call_hashes[call_idx][i]; }
+        }
+        for i in 0..32 { entrypoint_data[192 + i] = tx_metadata_hash[i]; }
+        let message_hash = keccak256::keccak256(entrypoint_data, 224);
+
+        let eip712_payload = compute_eip712_payload(DOMAIN_SEPARATOR, message_hash);
+
+        assert(
+            std::ecdsa_secp256k1::verify_signature(
+                public_key.x, public_key.y, ecdsa_signature, eip712_payload,
+            ),
+            "Invalid EIP-712 V2 signature",
+        );
+
+        if fee_payment_method == 1 {
+            self.context.set_as_fee_payer();
+            self.context.end_setup();
+        } else if fee_payment_method == 2 {
+            self.context.set_as_fee_payer();
+        }
+
+        app_payload.execute_calls(self.context);
+
+        if cancellable {
+            let tx_nullifier = poseidon2_hash_with_separator([app_payload.tx_nonce], DOM_SEP__TX_NULLIFIER);
+            self.context.push_nullifier(tx_nullifier);
+        }
+    }
+
+    // =========================================================================
+    // Authwit Verification (with variable argument types - unchanged)
     // =========================================================================
 
     #[external("private")]
@@ -363,7 +832,7 @@ pub contract Eip712AccountV2 {
             ecdsa_signature[32 + i] = witness.signature_s[i];
         }
 
-        // Verify type_hash(FunctionCallAuthorization) via Merkle tree (Approach 2)
+        // Verify type_hash(FunctionCallAuthorization) via Merkle tree
         let fc_auth_type_hash_field = type_hash_to_field(witness.fc_auth_type_hash);
         verify_arguments_whitelist(
             fc_auth_type_hash_field,

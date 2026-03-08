@@ -4,19 +4,18 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  ACCOUNT_MAX_CALLS_V2,
+  MAX_ENTRYPOINT_CALLS,
   MAX_ARGS_V2,
   MAX_SERIALIZED_ARGS_V2,
   MAX_SIGNATURE_SIZE_V2,
   MAX_ARGS_TYPE_STRING_LEN,
   MERKLE_DEPTH,
-  EIP712_WITNESS_V2_2_SLOT,
+  EIP712_WITNESS_V2_SLOTS,
   EIP712_AUTHWIT_V2_SLOT,
   DEFAULT_VERIFYING_CONTRACT_V2,
-  EMPTY_FUNCTION_CALL_V2,
-  ENTRYPOINT_AUTH_PRIMARY,
-  FC_PRIMARY,
+  FC_PRIMARIES,
   FC_AUTH_PRIMARY,
+  buildEntrypointAuthPrimary,
   EIP712_TYPES_V2_BASE,
   buildArgumentsTypeDef,
   buildArgumentsTypeString,
@@ -27,8 +26,8 @@ import {
 
 describe("EIP-712 V2 Types", () => {
   describe("constants", () => {
-    it("should have ACCOUNT_MAX_CALLS_V2 = 4", () => {
-      expect(ACCOUNT_MAX_CALLS_V2).toBe(4);
+    it("should have MAX_ENTRYPOINT_CALLS = 4", () => {
+      expect(MAX_ENTRYPOINT_CALLS).toBe(4);
     });
 
     it("should have MAX_ARGS_V2 = 10", () => {
@@ -51,36 +50,21 @@ describe("EIP-712 V2 Types", () => {
       expect(MERKLE_DEPTH).toBe(17);
     });
 
-    it("should have valid capsule slots", () => {
-      expect(typeof EIP712_WITNESS_V2_2_SLOT).toBe("bigint");
-      expect(typeof EIP712_AUTHWIT_V2_SLOT).toBe("bigint");
-      expect(EIP712_WITNESS_V2_2_SLOT).not.toBe(EIP712_AUTHWIT_V2_SLOT);
+    it("should have valid EIP712_WITNESS_V2_SLOTS for keys 1-4", () => {
+      for (let i = 1; i <= 4; i++) {
+        expect(typeof EIP712_WITNESS_V2_SLOTS[i]).toBe("bigint");
+      }
+    });
+
+    it("should have all unique capsule slots", () => {
+      const witnessSlots = Object.values(EIP712_WITNESS_V2_SLOTS);
+      const allSlots = [...witnessSlots, EIP712_AUTHWIT_V2_SLOT];
+      const uniqueSlots = new Set(allSlots);
+      expect(uniqueSlots.size).toBe(allSlots.length);
     });
 
     it("should have valid default verifying contract", () => {
       expect(DEFAULT_VERIFYING_CONTRACT_V2).toMatch(/^0x[0-9a-f]{40}$/i);
-    });
-  });
-
-  describe("EMPTY_FUNCTION_CALL_V2", () => {
-    it("should have zero address contract", () => {
-      expect(EMPTY_FUNCTION_CALL_V2.contract).toBe(
-        "0x0000000000000000000000000000000000000000000000000000000000000000",
-      );
-    });
-
-    it("should have empty function signature", () => {
-      expect(EMPTY_FUNCTION_CALL_V2.functionSignature).toBe("");
-    });
-
-    it("should have empty arguments object", () => {
-      expect(EMPTY_FUNCTION_CALL_V2.arguments).toEqual({});
-    });
-
-    it("should have boolean flags set to false", () => {
-      expect(EMPTY_FUNCTION_CALL_V2.isPublic).toBe(false);
-      expect(EMPTY_FUNCTION_CALL_V2.hideMsgSender).toBe(false);
-      expect(EMPTY_FUNCTION_CALL_V2.isStatic).toBe(false);
     });
   });
 
@@ -152,28 +136,61 @@ describe("EIP-712 V2 Types", () => {
   });
 
   describe("buildEntrypointTypes", () => {
-    it("should include all base types", () => {
-      const types = buildEntrypointTypes(["bytes32"]);
+    it("should include base types and per-slot FunctionCall/Arguments for 1 call", () => {
+      const types = buildEntrypointTypes([["bytes32"]]);
       expect(types.EIP712Domain).toBeDefined();
       expect(types.AccountData).toBeDefined();
       expect(types.TxMetadata).toBeDefined();
       expect(types.EntrypointAuthorization).toBeDefined();
-      expect(types.FunctionCall).toBeDefined();
       expect(types.AuthwitAppDomain).toBeDefined();
       expect(types.FunctionCallAuthorization).toBeDefined();
+      expect(types.FunctionCall1).toBeDefined();
+      expect(types.Arguments1).toBeDefined();
     });
 
-    it("should include dynamic Arguments type", () => {
-      const types = buildEntrypointTypes(["bytes32", "uint256"]);
-      expect(types.Arguments).toEqual([
+    it("should not include unified FunctionCall type", () => {
+      const types = buildEntrypointTypes([["bytes32"]]);
+      expect(types.FunctionCall).toBeUndefined();
+      expect(types.Arguments).toBeUndefined();
+    });
+
+    it("should include dynamic per-slot Arguments types", () => {
+      const types = buildEntrypointTypes([["bytes32", "uint256"]]);
+      expect(types.Arguments1).toEqual([
         { name: "argument1", type: "bytes32" },
         { name: "argument2", type: "uint256" },
       ]);
     });
 
-    it("should handle empty argument types", () => {
-      const types = buildEntrypointTypes([]);
-      expect(types.Arguments).toEqual([]);
+    it("should handle 2 calls with different arg types", () => {
+      const types = buildEntrypointTypes([
+        ["bytes32", "uint256"],
+        ["int256"],
+      ]);
+      expect(types.FunctionCall1).toBeDefined();
+      expect(types.FunctionCall2).toBeDefined();
+      expect(types.Arguments1).toEqual([
+        { name: "argument1", type: "bytes32" },
+        { name: "argument2", type: "uint256" },
+      ]);
+      expect(types.Arguments2).toEqual([
+        { name: "argument1", type: "int256" },
+      ]);
+    });
+
+    it("should build EntrypointAuthorization with per-slot FunctionCall references", () => {
+      const types = buildEntrypointTypes([
+        ["bytes32", "uint256"],
+        ["int256"],
+      ]);
+      expect(types.EntrypointAuthorization).toContainEqual({
+        name: "functionCall1",
+        type: "FunctionCall1",
+      });
+      expect(types.EntrypointAuthorization).toContainEqual({
+        name: "functionCall2",
+        type: "FunctionCall2",
+      });
     });
   });
 
@@ -202,15 +219,51 @@ describe("EIP-712 V2 Types", () => {
   });
 
   describe("primary struct strings", () => {
-    it("should have correct EntrypointAuthorization primary", () => {
-      expect(ENTRYPOINT_AUTH_PRIMARY).toBe(
-        "EntrypointAuthorization(AccountData accountData,FunctionCall functionCall1,FunctionCall functionCall2,FunctionCall functionCall3,FunctionCall functionCall4,TxMetadata txMetadata)",
+    it("should have correct buildEntrypointAuthPrimary for 1 call", () => {
+      expect(buildEntrypointAuthPrimary(1)).toBe(
+        "EntrypointAuthorization(AccountData accountData,FunctionCall1 functionCall1,TxMetadata txMetadata)",
       );
     });
 
-    it("should have correct FunctionCall primary", () => {
-      expect(FC_PRIMARY).toBe(
-        "FunctionCall(bytes32 contract,string functionSignature,Arguments arguments,bool isPublic,bool hideMsgSender,bool isStatic)",
+    it("should have correct buildEntrypointAuthPrimary for 2 calls", () => {
+      expect(buildEntrypointAuthPrimary(2)).toBe(
+        "EntrypointAuthorization(AccountData accountData,FunctionCall1 functionCall1,FunctionCall2 functionCall2,TxMetadata txMetadata)",
+      );
+    });
+
+    it("should have correct buildEntrypointAuthPrimary for 3 calls", () => {
+      expect(buildEntrypointAuthPrimary(3)).toBe(
+        "EntrypointAuthorization(AccountData accountData,FunctionCall1 functionCall1,FunctionCall2 functionCall2,FunctionCall3 functionCall3,TxMetadata txMetadata)",
+      );
+    });
+
+    it("should have correct buildEntrypointAuthPrimary for 4 calls", () => {
+      expect(buildEntrypointAuthPrimary(4)).toBe(
+        "EntrypointAuthorization(AccountData accountData,FunctionCall1 functionCall1,FunctionCall2 functionCall2,FunctionCall3 functionCall3,FunctionCall4 functionCall4,TxMetadata txMetadata)",
+      );
+    });
+
+    it("should have correct FC_PRIMARIES for slot 1", () => {
+      expect(FC_PRIMARIES[1]).toBe(
+        "FunctionCall1(bytes32 contract,string functionSignature,Arguments1 arguments,bool isPublic,bool hideMsgSender,bool isStatic)",
+      );
+    });
+
+    it("should have correct FC_PRIMARIES for slot 2", () => {
+      expect(FC_PRIMARIES[2]).toBe(
+        "FunctionCall2(bytes32 contract,string functionSignature,Arguments2 arguments,bool isPublic,bool hideMsgSender,bool isStatic)",
+      );
+    });
+
+    it("should have correct FC_PRIMARIES for slot 3", () => {
+      expect(FC_PRIMARIES[3]).toBe(
+        "FunctionCall3(bytes32 contract,string functionSignature,Arguments3 arguments,bool isPublic,bool hideMsgSender,bool isStatic)",
+      );
+    });
+
+    it("should have correct FC_PRIMARIES for slot 4", () => {
+      expect(FC_PRIMARIES[4]).toBe(
+        "FunctionCall4(bytes32 contract,string functionSignature,Arguments4 arguments,bool isPublic,bool hideMsgSender,bool isStatic)",
       );
     });
 
@@ -268,13 +321,6 @@ describe("EIP-712 V2 Types", () => {
       expect(EIP712_TYPES_V2_BASE.TxMetadata).toContainEqual({
         name: "txNonce",
         type: "uint256",
-      });
-    });
-
-    it("should have FunctionCall referencing Arguments", () => {
-      expect(EIP712_TYPES_V2_BASE.FunctionCall).toContainEqual({
-        name: "arguments",
-        type: "Arguments",
       });
     });
 

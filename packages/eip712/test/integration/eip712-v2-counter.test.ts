@@ -11,7 +11,7 @@
  * V2 differences from V1:
  * - Per-argument EIP-712 types (bytes32, uint256, int256) instead of fixed uint256[]
  * - Merkle tree whitelist for type validity
- * - 2 call slots instead of 5
+ * - Per-call-count entrypoints (entrypoint_1 through entrypoint_4) with per-slot types
  *
  * This test requires the Aztec sandbox to be running on localhost:8080
  */

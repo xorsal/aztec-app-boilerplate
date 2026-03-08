@@ -98,8 +98,14 @@ describe("Eip712AccountV2", () => {
     it("should create capsule with correct contract address", async () => {
       const account = new Eip712AccountV2(TEST_PRIVATE_KEY);
       const contractAddress = AztecAddress.fromBigInt(999n);
+      const call: FunctionCallInputV2 = {
+        targetAddress: 1n,
+        functionSignature: "test()",
+        args: [],
+        argTypes: [],
+      };
       const capsule = await account.createWitnessCapsule2(
-        [],
+        [call],
         0n,
         contractAddress,
       );
@@ -108,16 +114,22 @@ describe("Eip712AccountV2", () => {
       expect(capsule.contractAddress.equals(contractAddress)).toBe(true);
     });
 
-    it("should serialize to 175 fields", async () => {
+    it("should serialize to 79 fields for 1 call", async () => {
       const account = new Eip712AccountV2(TEST_PRIVATE_KEY);
       const contractAddress = AztecAddress.fromBigInt(999n);
+      const call: FunctionCallInputV2 = {
+        targetAddress: 1n,
+        functionSignature: "test()",
+        args: [],
+        argTypes: [],
+      };
       const capsule = await account.createWitnessCapsule2(
-        [],
+        [call],
         0n,
         contractAddress,
       );
 
-      expect(capsule.data).toHaveLength(175);
+      expect(capsule.data).toHaveLength(79);
     });
 
     it("should handle single function call", async () => {
@@ -135,7 +147,7 @@ describe("Eip712AccountV2", () => {
         contractAddress,
       );
 
-      expect(capsule.data).toHaveLength(175);
+      expect(capsule.data).toHaveLength(79);
     });
 
     it("should handle two function calls", async () => {
@@ -161,7 +173,48 @@ describe("Eip712AccountV2", () => {
         contractAddress,
       );
 
-      expect(capsule.data).toHaveLength(175);
+      expect(capsule.data).toHaveLength(143);
+    });
+
+    it("should handle three function calls", async () => {
+      const account = new Eip712AccountV2(TEST_PRIVATE_KEY);
+      const contractAddress = AztecAddress.fromBigInt(999n);
+      const calls: FunctionCallInputV2[] = [
+        {
+          targetAddress: 1n,
+          functionSignature: "func1(Field)",
+          args: [100n],
+          argTypes: ["uint256"],
+        },
+        {
+          targetAddress: 2n,
+          functionSignature: "func2(Field,Field)",
+          args: [200n, 300n],
+          argTypes: ["uint256", "int256"],
+        },
+        {
+          targetAddress: 3n,
+          functionSignature: "func3(Field)",
+          args: [400n],
+          argTypes: ["bytes32"],
+        },
+      ];
+      const capsule = await account.createWitnessCapsule2(
+        calls,
+        3n,
+        contractAddress,
+      );
+
+      expect(capsule.data).toHaveLength(207);
+    });
+
+    it("should throw for empty calls", async () => {
+      const account = new Eip712AccountV2(TEST_PRIVATE_KEY);
+      const contractAddress = AztecAddress.fromBigInt(999n);
+
+      await expect(
+        account.createWitnessCapsule2([], 0n, contractAddress),
+      ).rejects.toThrow("At least one call is required");
     });
 
     it("should throw if more than 4 calls", async () => {

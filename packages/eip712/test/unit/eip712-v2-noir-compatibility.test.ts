@@ -21,26 +21,39 @@ import {
 
 import {
   type ArgumentType,
-  ENTRYPOINT_AUTH_PRIMARY,
-  FC_PRIMARY,
+  FC_PRIMARIES,
   FC_AUTH_PRIMARY,
   DEFAULT_VERIFYING_CONTRACT_V2,
   buildArgumentsTypeString,
+  buildEntrypointAuthPrimary,
 } from "../../src/lib/eip712-types-v2.js";
 
 import {
   getMerkleRoot,
-  MERKLE_ROOT_FC,
+  MERKLE_ROOT_FC_1,
+  MERKLE_ROOT_FC_2,
+  MERKLE_ROOT_FC_3,
+  MERKLE_ROOT_FC_4,
   MERKLE_ROOT_FC_AUTH,
 } from "../../src/lib/merkle-tree-data.js";
+
+// Convenience aliases for per-slot FunctionCall primaries
+const FC1_PRIMARY = FC_PRIMARIES[1];
+const FC2_PRIMARY = FC_PRIMARIES[2];
 
 // =============================================================================
 // Noir hardcoded constants (ground truth from eip712_v2.nr / main.nr)
 // =============================================================================
 
 const NOIR_MERKLE_ROOTS = {
-  MERKLE_ROOT_FC:
-    "0x2f6722fe2ae340afcb0448978e464debf48ad5451f647b24f2aec095f59eeb11",
+  MERKLE_ROOT_FC_1:
+    "0x23807fde3749e9b5ddbc6c91886cc6e55280139ed5518a318fb21af017089c94",
+  MERKLE_ROOT_FC_2:
+    "0x1b95d5f26019d68281772cf97daae098abad03aff858c1790ec3082b717a0565",
+  MERKLE_ROOT_FC_3:
+    "0x02080475653ec163fc95413db7dc583f5b7e732d02cf9a6e00ffb8fe9117f4b4",
+  MERKLE_ROOT_FC_4:
+    "0x21f9fe446360ae84bb7119f92dcfb979bb8731016aa844f9ce71437bd5734d90",
   MERKLE_ROOT_FC_AUTH:
     "0x054a9fe2ce02ae6f96b01ea4962e3d41b2da0856e4027a2e2c53cf04c3271eda",
 };
@@ -132,11 +145,12 @@ describe("EIP-712 V2 Noir Compatibility", () => {
 
     it("FunctionCall type hash with specific Arguments definition", () => {
       const argTypes: ArgumentType[] = ["bytes32", "uint256"];
-      const argsTypeString = buildArgumentsTypeString("Arguments", argTypes);
-      // FunctionCall encode_type = FC_PRIMARY + Arguments(...)
-      const encodeType = FC_PRIMARY + argsTypeString;
+      const argsTypeString = buildArgumentsTypeString("Arguments1", argTypes);
+      // FunctionCall1 encode_type = FC_PRIMARIES[1] + Arguments1(...)
+      const encodeType = FC_PRIMARIES[1] + argsTypeString;
       const expected = keccak256(encodePacked(["string"], [encodeType]));
       const computed = Eip712EncoderV2.computeFunctionCallTypeHash(
+        FC_PRIMARIES[1],
         argsTypeString,
       );
       expect(computed.toLowerCase()).toBe(expected.toLowerCase());
@@ -144,10 +158,11 @@ describe("EIP-712 V2 Noir Compatibility", () => {
 
     it("FunctionCall type hash with different Arguments definition", () => {
       const argTypes: ArgumentType[] = ["int256"];
-      const argsTypeString = buildArgumentsTypeString("Arguments", argTypes);
-      const encodeType = FC_PRIMARY + argsTypeString;
+      const argsTypeString = buildArgumentsTypeString("Arguments1", argTypes);
+      const encodeType = FC_PRIMARIES[1] + argsTypeString;
       const expected = keccak256(encodePacked(["string"], [encodeType]));
       const computed = Eip712EncoderV2.computeFunctionCallTypeHash(
+        FC_PRIMARIES[1],
         argsTypeString,
       );
       expect(computed.toLowerCase()).toBe(expected.toLowerCase());
@@ -177,10 +192,11 @@ describe("EIP-712 V2 Noir Compatibility", () => {
       );
 
       // Primary must come first
-      expect(encodeType.startsWith(ENTRYPOINT_AUTH_PRIMARY)).toBe(true);
+      const expectedPrimary = buildEntrypointAuthPrimary(2);
+      expect(encodeType.startsWith(expectedPrimary)).toBe(true);
 
       // Extract referenced types (everything after primary)
-      const afterPrimary = encodeType.slice(ENTRYPOINT_AUTH_PRIMARY.length);
+      const afterPrimary = encodeType.slice(expectedPrimary.length);
 
       // Referenced types should appear in alphabetical order:
       // AccountData, Arguments1, Arguments2, FunctionCall1, FunctionCall2, TxMetadata
@@ -425,8 +441,7 @@ describe("EIP-712 V2 Noir Compatibility", () => {
 
       // Manual entrypoint hash
       const entrypointTypeHash = Eip712EncoderV2.computeEntrypointTypeHash(
-        args1Types,
-        args2Types,
+        [args1Types, args2Types],
       );
       const manual = keccak256(
         concat([
@@ -440,11 +455,9 @@ describe("EIP-712 V2 Noir Compatibility", () => {
 
       const computed = Eip712EncoderV2.hashEntrypointAuthorization(
         accountDataHash,
-        fc1Hash,
-        fc2Hash,
+        [fc1Hash, fc2Hash],
         txMetadataHash,
-        args1Types,
-        args2Types,
+        [args1Types, args2Types],
       );
 
       expect(computed.toLowerCase()).toBe(manual.toLowerCase());
@@ -455,36 +468,56 @@ describe("EIP-712 V2 Noir Compatibility", () => {
   // 4. Merkle Root Consistency
   // ---------------------------------------------------------------------------
   describe("Merkle Root Consistency", () => {
-    it("getMerkleRoot('Arguments') matches Noir MERKLE_ROOT_ARGS", () => {
+    it("getMerkleRoot('FunctionCall1') matches Noir MERKLE_ROOT_FC_1", () => {
+      const root = getMerkleRoot("FunctionCall1");
+      expect(root.toLowerCase()).toBe(
+        NOIR_MERKLE_ROOTS.MERKLE_ROOT_FC_1.toLowerCase(),
+      );
+    });
+
+    it("getMerkleRoot('FunctionCall2') matches Noir MERKLE_ROOT_FC_2", () => {
+      const root = getMerkleRoot("FunctionCall2");
+      expect(root.toLowerCase()).toBe(
+        NOIR_MERKLE_ROOTS.MERKLE_ROOT_FC_2.toLowerCase(),
+      );
+    });
+
+    it("getMerkleRoot('FunctionCall3') matches Noir MERKLE_ROOT_FC_3", () => {
+      const root = getMerkleRoot("FunctionCall3");
+      expect(root.toLowerCase()).toBe(
+        NOIR_MERKLE_ROOTS.MERKLE_ROOT_FC_3.toLowerCase(),
+      );
+    });
+
+    it("getMerkleRoot('FunctionCall4') matches Noir MERKLE_ROOT_FC_4", () => {
+      const root = getMerkleRoot("FunctionCall4");
+      expect(root.toLowerCase()).toBe(
+        NOIR_MERKLE_ROOTS.MERKLE_ROOT_FC_4.toLowerCase(),
+      );
+    });
+
+    it("getMerkleRoot('Arguments') matches Noir MERKLE_ROOT_FC_AUTH", () => {
       const root = getMerkleRoot("Arguments");
       expect(root.toLowerCase()).toBe(
-        NOIR_MERKLE_ROOTS.MERKLE_ROOT_ARGS.toLowerCase(),
-      );
-    });
-
-    it("getMerkleRoot('Arguments1') matches Noir MERKLE_ROOT_ARGS1", () => {
-      const root = getMerkleRoot("Arguments1");
-      expect(root.toLowerCase()).toBe(
-        NOIR_MERKLE_ROOTS.MERKLE_ROOT_ARGS1.toLowerCase(),
-      );
-    });
-
-    it("getMerkleRoot('Arguments2') matches Noir MERKLE_ROOT_ARGS2", () => {
-      const root = getMerkleRoot("Arguments2");
-      expect(root.toLowerCase()).toBe(
-        NOIR_MERKLE_ROOTS.MERKLE_ROOT_ARGS2.toLowerCase(),
+        NOIR_MERKLE_ROOTS.MERKLE_ROOT_FC_AUTH.toLowerCase(),
       );
     });
 
     it("exported constants match getMerkleRoot", () => {
-      expect(MERKLE_ROOT_ARGUMENTS.toLowerCase()).toBe(
-        NOIR_MERKLE_ROOTS.MERKLE_ROOT_ARGS.toLowerCase(),
+      expect(MERKLE_ROOT_FC_1.toLowerCase()).toBe(
+        NOIR_MERKLE_ROOTS.MERKLE_ROOT_FC_1.toLowerCase(),
       );
-      expect(MERKLE_ROOT_ARGUMENTS1.toLowerCase()).toBe(
-        NOIR_MERKLE_ROOTS.MERKLE_ROOT_ARGS1.toLowerCase(),
+      expect(MERKLE_ROOT_FC_2.toLowerCase()).toBe(
+        NOIR_MERKLE_ROOTS.MERKLE_ROOT_FC_2.toLowerCase(),
       );
-      expect(MERKLE_ROOT_ARGUMENTS2.toLowerCase()).toBe(
-        NOIR_MERKLE_ROOTS.MERKLE_ROOT_ARGS2.toLowerCase(),
+      expect(MERKLE_ROOT_FC_3.toLowerCase()).toBe(
+        NOIR_MERKLE_ROOTS.MERKLE_ROOT_FC_3.toLowerCase(),
+      );
+      expect(MERKLE_ROOT_FC_4.toLowerCase()).toBe(
+        NOIR_MERKLE_ROOTS.MERKLE_ROOT_FC_4.toLowerCase(),
+      );
+      expect(MERKLE_ROOT_FC_AUTH.toLowerCase()).toBe(
+        NOIR_MERKLE_ROOTS.MERKLE_ROOT_FC_AUTH.toLowerCase(),
       );
     });
   });

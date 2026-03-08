@@ -11,13 +11,16 @@ import {
   computeFcTypeHashField,
   computeFcTypeHashBytes,
   computeArgsTypeHashBytes,
-  MERKLE_ROOT_FC,
+  MERKLE_ROOT_FC_1,
+  MERKLE_ROOT_FC_2,
+  MERKLE_ROOT_FC_3,
+  MERKLE_ROOT_FC_4,
   MERKLE_ROOT_FC_AUTH,
   MERKLE_DEPTH,
 } from "../../src/lib/merkle-tree-data.js";
 import {
   buildArgumentsTypeString,
-  FC_PRIMARY,
+  FC_PRIMARIES,
   FC_AUTH_PRIMARY,
   AUTHWIT_APP_DOMAIN_DEF,
   type ArgumentType,
@@ -29,8 +32,20 @@ const BN254_FR_MODULUS =
 
 describe("Merkle Trees", () => {
   describe("getMerkleRoot", () => {
-    it("should return correct root for FunctionCall", () => {
-      expect(getMerkleRoot("FunctionCall")).toBe(MERKLE_ROOT_FC);
+    it("should return correct root for FunctionCall1", () => {
+      expect(getMerkleRoot("FunctionCall1")).toBe(MERKLE_ROOT_FC_1);
+    });
+
+    it("should return correct root for FunctionCall2", () => {
+      expect(getMerkleRoot("FunctionCall2")).toBe(MERKLE_ROOT_FC_2);
+    });
+
+    it("should return correct root for FunctionCall3", () => {
+      expect(getMerkleRoot("FunctionCall3")).toBe(MERKLE_ROOT_FC_3);
+    });
+
+    it("should return correct root for FunctionCall4", () => {
+      expect(getMerkleRoot("FunctionCall4")).toBe(MERKLE_ROOT_FC_4);
     });
 
     it("should return correct root for Arguments", () => {
@@ -44,7 +59,10 @@ describe("Merkle Trees", () => {
     });
 
     it("roots should be valid hex strings", () => {
-      expect(MERKLE_ROOT_FC).toMatch(/^0x[0-9a-f]{64}$/);
+      expect(MERKLE_ROOT_FC_1).toMatch(/^0x[0-9a-f]{64}$/);
+      expect(MERKLE_ROOT_FC_2).toMatch(/^0x[0-9a-f]{64}$/);
+      expect(MERKLE_ROOT_FC_3).toMatch(/^0x[0-9a-f]{64}$/);
+      expect(MERKLE_ROOT_FC_4).toMatch(/^0x[0-9a-f]{64}$/);
       expect(MERKLE_ROOT_FC_AUTH).toMatch(/^0x[0-9a-f]{64}$/);
     });
   });
@@ -62,24 +80,24 @@ describe("Merkle Trees", () => {
       expect(actual.toBigInt()).toBe(expectedField.toBigInt());
     });
 
-    it("should match manual keccak256(fc_encode_type) → Field for FunctionCall", () => {
+    it("should match manual keccak256(fc_encode_type) → Field for FunctionCall1", () => {
       const argTypes: ArgumentType[] = ["bytes32"];
-      const argsTypeString = buildArgumentsTypeString("Arguments", argTypes);
-      const fcEncodeType = FC_PRIMARY + argsTypeString;
+      const argsTypeString = buildArgumentsTypeString("Arguments1", argTypes);
+      const fcEncodeType = FC_PRIMARIES[1] + argsTypeString;
       const hash = keccak256(encodePacked(["string"], [fcEncodeType]));
       const expectedField = new Fr(BigInt(hash) % BN254_FR_MODULUS);
 
-      const actual = computeFcTypeHashField("FunctionCall", argTypes);
+      const actual = computeFcTypeHashField("FunctionCall1", argTypes);
       expect(actual.toBigInt()).toBe(expectedField.toBigInt());
     });
 
-    it("should match for empty args (FunctionCall)", () => {
-      const argsTypeString = buildArgumentsTypeString("Arguments", []);
-      const fcEncodeType = FC_PRIMARY + argsTypeString;
+    it("should match for empty args (FunctionCall1)", () => {
+      const argsTypeString = buildArgumentsTypeString("Arguments1", []);
+      const fcEncodeType = FC_PRIMARIES[1] + argsTypeString;
       const hash = keccak256(encodePacked(["string"], [fcEncodeType]));
       const expectedField = new Fr(BigInt(hash) % BN254_FR_MODULUS);
 
-      const actual = computeFcTypeHashField("FunctionCall", []);
+      const actual = computeFcTypeHashField("FunctionCall1", []);
       expect(actual.toBigInt()).toBe(expectedField.toBigInt());
     });
 
@@ -94,11 +112,11 @@ describe("Merkle Trees", () => {
     });
 
     it("should produce same result for same inputs", () => {
-      const field1 = computeFcTypeHashField("FunctionCall", [
+      const field1 = computeFcTypeHashField("FunctionCall1", [
         "bytes32",
         "int256",
       ]);
-      const field2 = computeFcTypeHashField("FunctionCall", [
+      const field2 = computeFcTypeHashField("FunctionCall1", [
         "bytes32",
         "int256",
       ]);
@@ -109,20 +127,29 @@ describe("Merkle Trees", () => {
   describe("computeFcTypeHashBytes / computeArgsTypeHashBytes", () => {
     it("computeFcTypeHashBytes returns raw keccak256 of fc_encode_type", () => {
       const argTypes: ArgumentType[] = ["uint256"];
-      const argsTypeString = buildArgumentsTypeString("Arguments", argTypes);
-      const fcEncodeType = FC_PRIMARY + argsTypeString;
+      const argsTypeString = buildArgumentsTypeString("Arguments1", argTypes);
+      const fcEncodeType = FC_PRIMARIES[1] + argsTypeString;
       const expected = keccak256(encodePacked(["string"], [fcEncodeType]));
 
-      const actual = computeFcTypeHashBytes("FunctionCall", argTypes);
+      const actual = computeFcTypeHashBytes("FunctionCall1", argTypes);
       expect(actual.toLowerCase()).toBe(expected.toLowerCase());
     });
 
-    it("computeArgsTypeHashBytes returns raw keccak256 of args_type_string", () => {
+    it("computeArgsTypeHashBytes returns raw keccak256 of args_type_string (authwit, slot 0)", () => {
       const argTypes: ArgumentType[] = ["bytes32", "int256"];
       const argsTypeString = buildArgumentsTypeString("Arguments", argTypes);
       const expected = keccak256(encodePacked(["string"], [argsTypeString]));
 
-      const actual = computeArgsTypeHashBytes(argTypes);
+      const actual = computeArgsTypeHashBytes(0, argTypes);
+      expect(actual.toLowerCase()).toBe(expected.toLowerCase());
+    });
+
+    it("computeArgsTypeHashBytes returns raw keccak256 of args_type_string (entrypoint, slot 1)", () => {
+      const argTypes: ArgumentType[] = ["bytes32", "int256"];
+      const argsTypeString = buildArgumentsTypeString("Arguments1", argTypes);
+      const expected = keccak256(encodePacked(["string"], [argsTypeString]));
+
+      const actual = computeArgsTypeHashBytes(1, argTypes);
       expect(actual.toLowerCase()).toBe(expected.toLowerCase());
     });
   });
@@ -138,8 +165,8 @@ describe("Merkle Trees", () => {
       });
     });
 
-    it("should return valid proof for FunctionCall with mixed types (JSON path)", async () => {
-      const proof = await getMerkleProof("FunctionCall", [
+    it("should return valid proof for FunctionCall1 with mixed types (JSON path)", async () => {
+      const proof = await getMerkleProof("FunctionCall1", [
         "bytes32",
         "uint256",
         "int256",
@@ -157,7 +184,7 @@ describe("Merkle Trees", () => {
     });
 
     it("should return valid proof for empty args (0 args, JSON path)", async () => {
-      const proof = await getMerkleProof("FunctionCall", []);
+      const proof = await getMerkleProof("FunctionCall1", []);
 
       expect(proof.leafIndex).toBe(0); // Empty args should be first leaf
       expect(proof.siblingPath).toHaveLength(MERKLE_DEPTH);
@@ -172,11 +199,11 @@ describe("Merkle Trees", () => {
     }, 60_000);
 
     it("should return consistent proofs for the same input", async () => {
-      const proof1 = await getMerkleProof("FunctionCall", [
+      const proof1 = await getMerkleProof("FunctionCall1", [
         "bytes32",
         "uint256",
       ]);
-      const proof2 = await getMerkleProof("FunctionCall", [
+      const proof2 = await getMerkleProof("FunctionCall1", [
         "bytes32",
         "uint256",
       ]);
@@ -202,8 +229,8 @@ describe("Merkle Trees", () => {
       const jsonArgTypes: ArgumentType[] = Array(5).fill("bytes32");
       const fallbackArgTypes: ArgumentType[] = Array(6).fill("bytes32");
 
-      const jsonProof = await getMerkleProof("FunctionCall", jsonArgTypes);
-      const fallbackProof = await getMerkleProof("FunctionCall", fallbackArgTypes);
+      const jsonProof = await getMerkleProof("FunctionCall1", jsonArgTypes);
+      const fallbackProof = await getMerkleProof("FunctionCall1", fallbackArgTypes);
 
       // Both should have valid structure
       expect(jsonProof.siblingPath).toHaveLength(MERKLE_DEPTH);

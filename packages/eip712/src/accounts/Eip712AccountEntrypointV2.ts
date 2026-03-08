@@ -1,8 +1,9 @@
 /**
  * EIP-712 V2 Account Entrypoint
  *
- * V2 entrypoint supporting 4 calls with unified FunctionCall→Arguments type.
- * The signing delegate creates capsules with Merkle proofs for type whitelist verification.
+ * V2 entrypoint with per-call-count entrypoints (entrypoint_1 through entrypoint_4).
+ * Each call slot has its own FunctionCall{N} and Arguments{N} types.
+ * The signing delegate creates capsules with per-call Merkle proofs.
  */
 
 import type { AuthWitnessProvider } from "@aztec/aztec.js/account";
@@ -25,7 +26,7 @@ import {
 } from "@aztec/stdlib/tx";
 import { Eip712AccountV2ContractArtifact } from "../artifacts.js";
 import type { Eip712SigningDelegateV2 } from "./Eip712AuthWitnessProviderV2.js";
-import { ACCOUNT_MAX_CALLS_V2 } from "../lib/eip712-types-v2.js";
+import { MAX_ENTRYPOINT_CALLS } from "../lib/eip712-types-v2.js";
 
 const DEFAULT_CHAIN_ID = 31337;
 const DEFAULT_VERSION = 1;
@@ -94,19 +95,7 @@ class EncodedAppEntrypointCallsV2 {
       });
     }
 
-    // Pad to 4 calls
-    while (encodedFunctionCalls.length < ACCOUNT_MAX_CALLS_V2) {
-      const emptyHash = await HashedValues.fromArgs([]);
-      hashedArguments.push(emptyHash);
-      encodedFunctionCalls.push({
-        args_hash: 0n,
-        function_selector: { value: 0 },
-        target_address: { inner: 0n },
-        is_public: false,
-        hide_msg_sender: false,
-        is_static: false,
-      });
-    }
+    // No padding — call count determines which entrypoint_N to use
 
     return new EncodedAppEntrypointCallsV2(
       hashedArguments,
@@ -217,6 +206,10 @@ export class Eip712AccountEntrypointV2 implements EntrypointInterface {
     const txNonce = options?.txNonce;
     const feePaymentMethodOptions = options?.feePaymentMethodOptions ?? 0;
 
+    if (calls.length === 0 || calls.length > MAX_ENTRYPOINT_CALLS) {
+      throw new Error(`Invalid call count: ${calls.length} (must be 1-${MAX_ENTRYPOINT_CALLS})`);
+    }
+
     const encodedCalls = await EncodedAppEntrypointCallsV2.create(
       calls.map((call) => ({
         to: call.to,
@@ -228,7 +221,8 @@ export class Eip712AccountEntrypointV2 implements EntrypointInterface {
       txNonce,
     );
 
-    const abi = this.getEntrypointAbi("entrypoint");
+    const entrypointName = `entrypoint_${calls.length}`;
+    const abi = this.getEntrypointAbi(entrypointName);
     const encodedArgs = encodeArguments(abi, [
       encodedCalls,
       feePaymentMethodOptions,

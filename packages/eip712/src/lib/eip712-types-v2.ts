@@ -7,6 +7,8 @@
  *
  * The argument names are fixed (argument1, argument2, ...) — only types are variable.
  * A Merkle tree whitelist constrains valid type_hash(Arguments{N}) values.
+ *
+ * Per-slot design: Each call slot has its own FunctionCall{N} and Arguments{N} types.
  */
 
 import type { Hex } from "viem";
@@ -70,18 +72,6 @@ export interface AuthwitAppDomainV2 {
 }
 
 /**
- * Entrypoint authorization message (4 calls)
- */
-export interface EntrypointAuthorizationV2 {
-  accountData: AccountData;
-  functionCall1: FunctionCallV2;
-  functionCall2: FunctionCallV2;
-  functionCall3: FunctionCallV2;
-  functionCall4: FunctionCallV2;
-  txMetadata: TxMetadata;
-}
-
-/**
  * Individual function call authorization (authwit)
  */
 export interface FunctionCallAuthorizationV2 {
@@ -97,7 +87,7 @@ export interface FunctionCallAuthorizationV2 {
 // =============================================================================
 
 /** Max function calls per V2 entrypoint */
-export const ACCOUNT_MAX_CALLS_V2 = 4;
+export const MAX_ENTRYPOINT_CALLS = 4;
 
 /** Max arguments per function call */
 export const MAX_ARGS_V2 = 10;
@@ -118,8 +108,13 @@ export const MERKLE_DEPTH = 17;
 // Capsule Slots (must match Noir eip712_v2.nr)
 // =============================================================================
 
-/** Capsule slot for V2 4-call entrypoint witness */
-export const EIP712_WITNESS_V2_2_SLOT = 0x1234567890abcdf1n;
+/** Capsule slots for V2 per-call-count entrypoint witnesses */
+export const EIP712_WITNESS_V2_SLOTS: Record<number, bigint> = {
+  1: 0x1234567890abcdf1n,
+  2: 0x1234567890abcdf2n,
+  3: 0x1234567890abcdf3n,
+  4: 0x1234567890abcdf4n,
+};
 
 /** Capsule slot for V2 individual authwit */
 export const EIP712_AUTHWIT_V2_SLOT = 0xabcdef1234567891n;
@@ -129,8 +124,8 @@ export const EIP712_AUTHWIT_V2_SLOT = 0xabcdef1234567891n;
 // =============================================================================
 
 /**
- * Build the Arguments type definition for a given struct name and arg types.
- * E.g. buildArgumentsTypeDef("Arguments1", ["bytes32", "uint256"]) returns:
+ * Build the Arguments type definition for a given arg types.
+ * E.g. buildArgumentsTypeDef(["bytes32", "uint256"]) returns:
  * [{name: "argument1", type: "bytes32"}, {name: "argument2", type: "uint256"}]
  */
 export function buildArgumentsTypeDef(
@@ -161,8 +156,8 @@ export function buildArgumentsTypeString(
 }
 
 /**
- * Fixed EIP-712 type definitions for V2 (4-call entrypoint).
- * Arguments type is added dynamically at signing time.
+ * Fixed EIP-712 type definitions for V2.
+ * EntrypointAuthorization and per-slot FunctionCall/Arguments types are added dynamically.
  */
 export const EIP712_TYPES_V2_BASE = {
   EIP712Domain: [
@@ -184,31 +179,13 @@ export const EIP712_TYPES_V2_BASE = {
     { name: "txNonce", type: "uint256" },
   ],
 
-  EntrypointAuthorization: [
-    { name: "accountData", type: "AccountData" },
-    { name: "functionCall1", type: "FunctionCall" },
-    { name: "functionCall2", type: "FunctionCall" },
-    { name: "functionCall3", type: "FunctionCall" },
-    { name: "functionCall4", type: "FunctionCall" },
-    { name: "txMetadata", type: "TxMetadata" },
-  ],
-
-  FunctionCall: [
-    { name: "contract", type: "bytes32" },
-    { name: "functionSignature", type: "string" },
-    { name: "arguments", type: "Arguments" },
-    { name: "isPublic", type: "bool" },
-    { name: "hideMsgSender", type: "bool" },
-    { name: "isStatic", type: "bool" },
-  ],
-
   // AuthwitAppDomain (same as V1)
   AuthwitAppDomain: [
     { name: "chainId", type: "uint256" },
     { name: "verifyingContract", type: "bytes32" },
   ],
 
-  // FunctionCallAuthorization with variable Arguments
+  // FunctionCallAuthorization with variable Arguments (authwit, unnumbered)
   FunctionCallAuthorization: [
     { name: "appDomain", type: "AuthwitAppDomain" },
     { name: "contract", type: "bytes32" },
@@ -219,19 +196,47 @@ export const EIP712_TYPES_V2_BASE = {
 };
 
 /**
- * Build complete EIP-712 types for 4-call entrypoint with dynamic argument types.
+ * Build complete EIP-712 types for per-call-count entrypoint with per-slot argument types.
+ * Each call gets its own FunctionCall{N} and Arguments{N} type.
  */
 export function buildEntrypointTypes(
-  argsTypes: ArgumentType[],
+  perCallArgTypes: ArgumentType[][],
 ): Record<string, Array<{ name: string; type: string }>> {
-  return {
+  const callCount = perCallArgTypes.length;
+
+  const entrypointFields = [
+    { name: "accountData", type: "AccountData" },
+    ...Array.from({ length: callCount }, (_, i) => ({
+      name: `functionCall${i + 1}`,
+      type: `FunctionCall${i + 1}`,
+    })),
+    { name: "txMetadata", type: "TxMetadata" },
+  ];
+
+  const result: Record<string, Array<{ name: string; type: string }>> = {
     ...EIP712_TYPES_V2_BASE,
-    Arguments: buildArgumentsTypeDef(argsTypes),
+    EntrypointAuthorization: entrypointFields,
   };
+
+  for (let i = 0; i < callCount; i++) {
+    const n = i + 1;
+    result[`FunctionCall${n}`] = [
+      { name: "contract", type: "bytes32" },
+      { name: "functionSignature", type: "string" },
+      { name: "arguments", type: `Arguments${n}` },
+      { name: "isPublic", type: "bool" },
+      { name: "hideMsgSender", type: "bool" },
+      { name: "isStatic", type: "bool" },
+    ];
+    result[`Arguments${n}`] = buildArgumentsTypeDef(perCallArgTypes[i]);
+  }
+
+  return result;
 }
 
 /**
  * Build complete EIP-712 types for authwit with dynamic argument types.
+ * Authwit uses unnumbered "Arguments" and "FunctionCallAuthorization".
  */
 export function buildAuthwitTypes(
   argTypes: ArgumentType[],
@@ -246,35 +251,32 @@ export function buildAuthwitTypes(
 // Primary Struct Strings (hardcoded, for constraining in Noir)
 // =============================================================================
 
-/** EntrypointAuthorization primary struct definition */
-export const ENTRYPOINT_AUTH_PRIMARY =
-  "EntrypointAuthorization(AccountData accountData,FunctionCall functionCall1,FunctionCall functionCall2,FunctionCall functionCall3,FunctionCall functionCall4,TxMetadata txMetadata)";
+/** Per-slot FunctionCall primary struct definitions (all 124 chars) */
+export const FC_PRIMARIES: Record<number, string> = {
+  1: "FunctionCall1(bytes32 contract,string functionSignature,Arguments1 arguments,bool isPublic,bool hideMsgSender,bool isStatic)",
+  2: "FunctionCall2(bytes32 contract,string functionSignature,Arguments2 arguments,bool isPublic,bool hideMsgSender,bool isStatic)",
+  3: "FunctionCall3(bytes32 contract,string functionSignature,Arguments3 arguments,bool isPublic,bool hideMsgSender,bool isStatic)",
+  4: "FunctionCall4(bytes32 contract,string functionSignature,Arguments4 arguments,bool isPublic,bool hideMsgSender,bool isStatic)",
+};
 
-/** FunctionCall primary struct definition */
-export const FC_PRIMARY =
-  "FunctionCall(bytes32 contract,string functionSignature,Arguments arguments,bool isPublic,bool hideMsgSender,bool isStatic)";
+/**
+ * Build the EntrypointAuthorization primary string for N calls.
+ */
+export function buildEntrypointAuthPrimary(callCount: number): string {
+  const fcFields = Array.from(
+    { length: callCount },
+    (_, i) => `FunctionCall${i + 1} functionCall${i + 1}`,
+  ).join(",");
+  return `EntrypointAuthorization(AccountData accountData,${fcFields},TxMetadata txMetadata)`;
+}
 
-/** FunctionCallAuthorization primary struct definition */
+/** FunctionCallAuthorization primary struct definition (authwit, unchanged) */
 export const FC_AUTH_PRIMARY =
   "FunctionCallAuthorization(AuthwitAppDomain appDomain,bytes32 contract,string functionSignature,Arguments arguments,bool isPublic)";
 
 /** AuthwitAppDomain type definition (referenced by FunctionCallAuthorization) */
 export const AUTHWIT_APP_DOMAIN_DEF =
   "AuthwitAppDomain(uint256 chainId,bytes32 verifyingContract)";
-
-// =============================================================================
-// Empty function call (for padding unused slots in 4-call entrypoint)
-// =============================================================================
-
-export const EMPTY_FUNCTION_CALL_V2: FunctionCallV2 = {
-  contract:
-    "0x0000000000000000000000000000000000000000000000000000000000000000",
-  functionSignature: "",
-  arguments: {},
-  isPublic: false,
-  hideMsgSender: false,
-  isStatic: false,
-};
 
 // =============================================================================
 // Default verifying contract (sandbox rollup address)

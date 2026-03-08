@@ -3,7 +3,7 @@
  *
  * Builds the EIP-712 typed data structure for the V2 contract with:
  * - Variable argument types (bytes32, uint256, int256 per argument)
- * - 4-call entrypoint with unified FunctionCall type
+ * - Per-slot FunctionCall{N} and Arguments{N} types
  * - AccountData and TxMetadata sub-structs
  * - Merkle tree whitelist for Arguments type hashes
  */
@@ -14,15 +14,10 @@ import {
   type AccountData,
   type TxMetadata,
   type FunctionCallV2,
-  type EntrypointAuthorizationV2,
-  type FunctionCallAuthorizationV2,
-  type AuthwitAppDomainV2,
-  ACCOUNT_MAX_CALLS_V2,
-  EMPTY_FUNCTION_CALL_V2,
   DEFAULT_VERIFYING_CONTRACT_V2,
-  ENTRYPOINT_AUTH_PRIMARY,
-  FC_PRIMARY,
+  FC_PRIMARIES,
   FC_AUTH_PRIMARY,
+  buildEntrypointAuthPrimary,
   buildArgumentsTypeString,
   buildEntrypointTypes,
   buildAuthwitTypes,
@@ -107,42 +102,57 @@ export class Eip712EncoderV2 {
   }
 
   /**
-   * Build typed data for V2 4-call entrypoint authorization.
-   * Dynamically constructs Arguments type definition.
-   * Pads to 4 calls with EMPTY_FUNCTION_CALL_V2.
+   * Build typed data for V2 per-call-count entrypoint authorization.
+   * Each call has its own FunctionCall{N} and Arguments{N} type.
+   * No padding — callCount = functionCalls.length.
    */
   buildEntrypointTypedData2(
     functionCalls: FunctionCallV2[],
-    argsTypes: ArgumentType[],
+    perCallArgTypes: ArgumentType[][],
     accountData: AccountData,
     txMetadata: TxMetadata,
     verifyingContract: Hex = DEFAULT_VERIFYING_CONTRACT_V2,
   ) {
-    const types = buildEntrypointTypes(argsTypes);
+    const types = buildEntrypointTypes(perCallArgTypes);
 
-    // Pad to 4 calls
-    const padded = [...functionCalls];
-    while (padded.length < ACCOUNT_MAX_CALLS_V2) {
-      padded.push(EMPTY_FUNCTION_CALL_V2);
-    }
-
-    // Build argument values for each call
-    const buildArgs = (fc: FunctionCallV2): Record<string, bigint> => {
-      const values: Record<string, bigint> = {};
-      for (let i = 0; i < argsTypes.length; i++) {
-        values[`argument${i + 1}`] = fc.arguments[`argument${i + 1}`] ?? 0n;
+    const buildArgs = (fc: FunctionCallV2, callIdx: number): Record<string, bigint | Hex> => {
+      const values: Record<string, bigint | Hex> = {};
+      const argTypes = perCallArgTypes[callIdx];
+      for (let i = 0; i < argTypes.length; i++) {
+        const val = fc.arguments[`argument${i + 1}`] ?? 0n;
+        if (argTypes[i] === "bytes32") {
+          values[`argument${i + 1}`] = pad(toHex(val), { size: 32 });
+        } else {
+          values[`argument${i + 1}`] = val;
+        }
       }
       return values;
     };
 
-    const buildCallMessage = (fc: FunctionCallV2) => ({
-      contract: fc.contract,
-      functionSignature: fc.functionSignature,
-      arguments: buildArgs(fc),
-      isPublic: fc.isPublic,
-      hideMsgSender: fc.hideMsgSender,
-      isStatic: fc.isStatic,
-    });
+    const message: Record<string, unknown> = {
+      accountData: {
+        address: accountData.address,
+        walletName: accountData.walletName,
+        version: accountData.version,
+      },
+      txMetadata: {
+        feePaymentMethod: txMetadata.feePaymentMethod,
+        cancellable: txMetadata.cancellable,
+        txNonce: txMetadata.txNonce,
+      },
+    };
+
+    for (let i = 0; i < functionCalls.length; i++) {
+      const fc = functionCalls[i];
+      message[`functionCall${i + 1}`] = {
+        contract: fc.contract,
+        functionSignature: fc.functionSignature,
+        arguments: buildArgs(fc, i),
+        isPublic: fc.isPublic,
+        hideMsgSender: fc.hideMsgSender,
+        isStatic: fc.isStatic,
+      };
+    }
 
     return {
       types,
@@ -152,27 +162,13 @@ export class Eip712EncoderV2 {
         chainId: this.chainId,
         verifyingContract,
       },
-      message: {
-        accountData: {
-          address: accountData.address,
-          walletName: accountData.walletName,
-          version: accountData.version,
-        },
-        functionCall1: buildCallMessage(padded[0]),
-        functionCall2: buildCallMessage(padded[1]),
-        functionCall3: buildCallMessage(padded[2]),
-        functionCall4: buildCallMessage(padded[3]),
-        txMetadata: {
-          feePaymentMethod: txMetadata.feePaymentMethod,
-          cancellable: txMetadata.cancellable,
-          txNonce: txMetadata.txNonce,
-        },
-      },
+      message,
     };
   }
 
   /**
    * Build typed data for V2 authwit (single function call authorization).
+   * Uses unnumbered "Arguments" type.
    */
   buildAuthwitTypedData(
     functionCall: FunctionCallV2,
@@ -181,10 +177,14 @@ export class Eip712EncoderV2 {
   ) {
     const types = buildAuthwitTypes(argTypes);
 
-    const argsValues: Record<string, bigint> = {};
+    const argsValues: Record<string, bigint | Hex> = {};
     for (let i = 0; i < argTypes.length; i++) {
-      argsValues[`argument${i + 1}`] =
-        functionCall.arguments[`argument${i + 1}`] ?? 0n;
+      const val = functionCall.arguments[`argument${i + 1}`] ?? 0n;
+      if (argTypes[i] === "bytes32") {
+        argsValues[`argument${i + 1}`] = pad(toHex(val), { size: 32 });
+      } else {
+        argsValues[`argument${i + 1}`] = val;
+      }
     }
 
     return {
@@ -278,7 +278,6 @@ export class Eip712EncoderV2 {
   /**
    * Compute hashStruct(Arguments{N}) with variable types.
    * Each argument is encoded as its native 32-byte EIP-712 representation.
-   * bytes32, uint256, int256 all encode to 32 bytes in encode_data.
    */
   static hashArguments(
     structName: string,
@@ -299,26 +298,28 @@ export class Eip712EncoderV2 {
   }
 
   /**
-   * Build the full encode_type string for FunctionCall.
-   * encode_type = FC_PRIMARY + Arguments_DEF (alphabetically sorted referenced types)
+   * Build the full encode_type string for a FunctionCall{N}.
+   * encode_type = fcPrimary + argsTypeString
    */
-  static buildFunctionCallEncodeType(argsTypeString: string): string {
-    return FC_PRIMARY + argsTypeString;
+  static buildFunctionCallEncodeType(fcPrimary: string, argsTypeString: string): string {
+    return fcPrimary + argsTypeString;
   }
 
   /**
-   * Compute type_hash for FunctionCall with a specific Arguments definition.
+   * Compute type_hash for a FunctionCall{N} with a specific Arguments{N} definition.
    */
-  static computeFunctionCallTypeHash(argsTypeString: string): Hex {
+  static computeFunctionCallTypeHash(fcPrimary: string, argsTypeString: string): Hex {
     const encodeType =
-      Eip712EncoderV2.buildFunctionCallEncodeType(argsTypeString);
+      Eip712EncoderV2.buildFunctionCallEncodeType(fcPrimary, argsTypeString);
     return keccak256(encodePacked(["string"], [encodeType]));
   }
 
   /**
-   * Compute hashStruct(FunctionCall) for the V2 struct layout.
+   * Compute hashStruct(FunctionCall{N}) for the V2 struct layout.
    */
   static hashFunctionCallV2(
+    fcPrimary: string,
+    argsStructName: string,
     contract: Hex,
     functionSignature: string,
     argTypes: ArgumentType[],
@@ -327,15 +328,15 @@ export class Eip712EncoderV2 {
     hideMsgSender: boolean,
     isStatic: boolean,
   ): Hex {
-    const argsTypeString = buildArgumentsTypeString("Arguments", argTypes);
+    const argsTypeString = buildArgumentsTypeString(argsStructName, argTypes);
     const typeHash =
-      Eip712EncoderV2.computeFunctionCallTypeHash(argsTypeString);
+      Eip712EncoderV2.computeFunctionCallTypeHash(fcPrimary, argsTypeString);
 
     const sigHash = keccak256(
       encodePacked(["string"], [functionSignature]),
     );
     const argsHash = Eip712EncoderV2.hashArguments(
-      "Arguments",
+      argsStructName,
       argTypes,
       argValues,
     );
@@ -355,27 +356,32 @@ export class Eip712EncoderV2 {
 
   /**
    * Build the full encode_type string for EntrypointAuthorization.
-   * Referenced types must be in alphabetical order per EIP-712 spec.
+   * Referenced types are in alphabetical order per EIP-712 spec:
+   * primary + AccountData + Arguments1..N + FunctionCall1..N + TxMetadata
    */
-  static buildEntrypointEncodeType(argsTypeString: string): string {
-    // Referenced types in alphabetical order:
-    // AccountData, Arguments, FunctionCall, TxMetadata
-    return (
-      ENTRYPOINT_AUTH_PRIMARY +
-      ACCOUNT_DATA_DEF +
-      argsTypeString +
-      FC_PRIMARY +
-      TX_METADATA_DEF
-    );
+  static buildEntrypointEncodeType(...argsTypeStrings: string[]): string {
+    const callCount = argsTypeStrings.length;
+    const authPrimary = buildEntrypointAuthPrimary(callCount);
+    let result = authPrimary + ACCOUNT_DATA_DEF;
+    for (const ts of argsTypeStrings) {
+      result += ts;
+    }
+    for (let i = 1; i <= callCount; i++) {
+      result += FC_PRIMARIES[i];
+    }
+    result += TX_METADATA_DEF;
+    return result;
   }
 
   /**
-   * Compute type_hash for EntrypointAuthorization with specific Arguments definition.
+   * Compute type_hash for EntrypointAuthorization with per-slot Arguments definitions.
    */
-  static computeEntrypointTypeHash(argsTypes: ArgumentType[]): Hex {
-    const argsTypeString = buildArgumentsTypeString("Arguments", argsTypes);
+  static computeEntrypointTypeHash(perCallArgTypes: ArgumentType[][]): Hex {
+    const argsTypeStrings = perCallArgTypes.map(
+      (argTypes, i) => buildArgumentsTypeString(`Arguments${i + 1}`, argTypes),
+    );
     const encodeType =
-      Eip712EncoderV2.buildEntrypointEncodeType(argsTypeString);
+      Eip712EncoderV2.buildEntrypointEncodeType(...argsTypeStrings);
     return keccak256(encodePacked(["string"], [encodeType]));
   }
 
@@ -386,9 +392,9 @@ export class Eip712EncoderV2 {
     accountDataHash: Hex,
     fcHashes: Hex[],
     txMetadataHash: Hex,
-    argsTypes: ArgumentType[],
+    perCallArgTypes: ArgumentType[][],
   ): Hex {
-    const typeHash = Eip712EncoderV2.computeEntrypointTypeHash(argsTypes);
+    const typeHash = Eip712EncoderV2.computeEntrypointTypeHash(perCallArgTypes);
 
     return keccak256(
       concat([

@@ -4,8 +4,8 @@
  * Handles signing and capsule creation for the V2 contract with variable argument types.
  * Each argument can be bytes32, uint256, or int256 (chosen by the frontend).
  *
- * Unified design: All call slots share a single FunctionCall→Arguments type.
- * ACCOUNT_MAX_CALLS=4 allows 3 business calls + 1 SponsoredFPC slot.
+ * Per-slot design: Each call slot has its own FunctionCall{N} and Arguments{N} type.
+ * No padding — callCount = actual number of calls.
  */
 
 import { secp256k1 } from "@noble/curves/secp256k1";
@@ -17,9 +17,8 @@ import {
   type AccountData,
   type TxMetadata,
   type FunctionCallV2,
-  ACCOUNT_MAX_CALLS_V2,
-  EMPTY_FUNCTION_CALL_V2,
-  EIP712_WITNESS_V2_2_SLOT,
+  MAX_ENTRYPOINT_CALLS,
+  EIP712_WITNESS_V2_SLOTS,
   EIP712_AUTHWIT_V2_SLOT,
   MAX_SERIALIZED_ARGS_V2,
   MAX_SIGNATURE_SIZE_V2,
@@ -48,7 +47,7 @@ export interface FunctionCallInputV2 {
   isStatic?: boolean;
 }
 
-/** Oracle data for V2 4-call entrypoint (unified types) */
+/** Oracle data for V2 per-call-count entrypoint (per-slot types) */
 export interface Eip712OracleDataV2_2 {
   ecdsaSignature: Uint8Array;
   // Per-call data
@@ -60,13 +59,13 @@ export interface Eip712OracleDataV2_2 {
   isPublic: boolean[];
   hideMsgSender: boolean[];
   isStatic: boolean[];
-  // Shared type/proof data (single, not per-call)
-  argsTypeString: Uint8Array;
-  argsTypeStringLength: number;
-  merkleProof: Fr[];
-  merkleLeafIndex: number;
-  fcTypeHash: Uint8Array;
-  argsTypeHash: Uint8Array;
+  // Per-call type/proof data (N entries each)
+  argsTypeStrings: Uint8Array[];
+  argsTypeStringLengths: number[];
+  merkleProofs: Fr[][];
+  merkleLeafIndices: number[];
+  fcTypeHashes: Uint8Array[];
+  argsTypeHashes: Uint8Array[];
   // Metadata
   walletName: Uint8Array;
   walletNameLength: number;
@@ -96,50 +95,6 @@ export interface Eip712AuthwitOracleDataV2 {
   fcAuthTypeHash: Uint8Array;
   /** Pre-computed Arguments type hash (Approach 2) */
   argsTypeHash: Uint8Array;
-}
-
-// =============================================================================
-// Unified Arg Types
-// =============================================================================
-
-/**
- * Compute unified argument types across all calls.
- * All calls must share the same Arguments type definition. The superset is built
- * by taking the maximum arg count and checking for type conflicts at each position.
- *
- * @throws Error if different calls use different types at the same position
- */
-export function computeUnifiedArgTypes(
-  calls: FunctionCallInputV2[],
-): ArgumentType[] {
-  const activeCalls = calls.filter((c) => c.targetAddress !== 0n);
-  if (activeCalls.length === 0) return [];
-
-  const maxArgCount = Math.max(...activeCalls.map((c) => c.argTypes.length));
-  const unified: ArgumentType[] = [];
-
-  for (let pos = 0; pos < maxArgCount; pos++) {
-    let resolvedType: ArgumentType | null = null;
-
-    for (const call of activeCalls) {
-      if (pos < call.argTypes.length) {
-        const callType = call.argTypes[pos];
-        if (resolvedType === null) {
-          resolvedType = callType;
-        } else if (resolvedType !== callType) {
-          throw new Error(
-            `Type conflict at argument position ${pos + 1}: ` +
-            `${resolvedType} vs ${callType}. ` +
-            `All calls must use the same type at each position.`,
-          );
-        }
-      }
-    }
-
-    unified.push(resolvedType ?? "bytes32");
-  }
-
-  return unified;
 }
 
 // =============================================================================
@@ -197,12 +152,13 @@ export class Eip712AccountV2 {
   }
 
   // ==========================================================================
-  // 4-Call Entrypoint Methods (unified FunctionCall type)
+  // Per-Call-Count Entrypoint Methods
   // ==========================================================================
 
   /**
-   * Create a Capsule for V2 4-call entrypoint.
-   * All calls share a single unified Arguments type definition.
+   * Create a Capsule for V2 per-call-count entrypoint.
+   * Each call has its own FunctionCall{N} and Arguments{N} type.
+   * No padding — capsule slot selected by call count.
    */
   async createWitnessCapsule2(
     calls: FunctionCallInputV2[],
@@ -210,29 +166,17 @@ export class Eip712AccountV2 {
     contractAddress: AztecAddress,
     verifyingContract: Hex = DEFAULT_VERIFYING_CONTRACT_V2,
   ): Promise<Capsule> {
-    if (calls.length > ACCOUNT_MAX_CALLS_V2) {
-      throw new Error(`Too many calls: ${calls.length} > ${ACCOUNT_MAX_CALLS_V2}`);
+    if (calls.length === 0) {
+      throw new Error("At least one call is required");
+    }
+    if (calls.length > MAX_ENTRYPOINT_CALLS) {
+      throw new Error(`Too many calls: ${calls.length} > ${MAX_ENTRYPOINT_CALLS}`);
     }
 
-    // Pad to 4 calls
-    const paddedCalls = [...calls];
-    while (paddedCalls.length < ACCOUNT_MAX_CALLS_V2) {
-      paddedCalls.push({
-        targetAddress: 0n,
-        functionSignature: "",
-        args: [],
-        argTypes: [],
-        isPublic: false,
-        hideMsgSender: false,
-        isStatic: false,
-      });
-    }
-
-    // Compute unified argument types across all active calls
-    const unifiedArgTypes = computeUnifiedArgTypes(paddedCalls);
+    const perCallArgTypes = calls.map(c => c.argTypes);
 
     // Build function call objects for EIP-712
-    const functionCalls = paddedCalls.map((c) => this.buildFunctionCallV2(c, unifiedArgTypes));
+    const functionCalls = calls.map(c => this.buildFunctionCallV2(c));
 
     const accountData: AccountData = {
       address: pad(toHex(contractAddress.toField().toBigInt()), { size: 32 }),
@@ -241,15 +185,15 @@ export class Eip712AccountV2 {
     };
 
     const txMetadata: TxMetadata = {
-      feePaymentMethod: 0, // Will be set by entrypoint params
+      feePaymentMethod: 0,
       cancellable: false,
       txNonce,
     };
 
-    // Build and sign typed data (single unified Arguments type)
+    // Build and sign typed data (per-slot Arguments types)
     const typedData = this.encoder.buildEntrypointTypedData2(
       functionCalls,
-      unifiedArgTypes,
+      perCallArgTypes,
       accountData,
       txMetadata,
       verifyingContract,
@@ -260,36 +204,34 @@ export class Eip712AccountV2 {
     const sigBytes = hexToBytes(signature);
     const ecdsaSignature = sigBytes.slice(0, 64);
 
-    // Get single Merkle proof for the unified FunctionCall type
-    const proof = await getMerkleProof("FunctionCall", unifiedArgTypes);
+    // Get per-call Merkle proofs from respective FunctionCall{N} trees
+    const proofs = await Promise.all(
+      calls.map((call, i) => getMerkleProof(`FunctionCall${i + 1}`, call.argTypes))
+    );
 
-    // Build oracle data with shared type/proof
+    // Build oracle data with per-call type/proof data
     const oracleData = this.buildOracleDataV2_2(
-      paddedCalls,
+      calls,
       ecdsaSignature,
-      proof,
-      unifiedArgTypes,
+      proofs,
       accountData,
       contractAddress.toField().toBigInt(),
     );
 
-    const capsuleData = this.serializeWitnessV2_2ToCapsule(oracleData);
+    const callCount = calls.length;
+    const capsuleData = this.serializeWitnessV2_2ToCapsule(oracleData, callCount);
     return new Capsule(
       contractAddress,
-      new Fr(EIP712_WITNESS_V2_2_SLOT),
+      new Fr(EIP712_WITNESS_V2_SLOTS[callCount]),
       capsuleData,
     );
   }
 
-  private buildFunctionCallV2(
-    call: FunctionCallInputV2,
-    unifiedArgTypes?: ArgumentType[],
-  ): FunctionCallV2 {
+  private buildFunctionCallV2(call: FunctionCallInputV2): FunctionCallV2 {
     const contract = pad(toHex(call.targetAddress), { size: 32 }) as Hex;
-    const argTypes = unifiedArgTypes ?? call.argTypes;
 
     const arguments_: Record<string, bigint> = {};
-    for (let i = 0; i < argTypes.length; i++) {
+    for (let i = 0; i < call.argTypes.length; i++) {
       arguments_[`argument${i + 1}`] = call.args[i] ?? 0n;
     }
 
@@ -306,11 +248,11 @@ export class Eip712AccountV2 {
   private buildOracleDataV2_2(
     calls: FunctionCallInputV2[],
     ecdsaSignature: Uint8Array,
-    merkleProof: MerkleProof,
-    unifiedArgTypes: ArgumentType[],
+    merkleProofs: MerkleProof[],
     accountData: AccountData,
     accountAddressBigInt: bigint,
   ): Eip712OracleDataV2_2 {
+    const callCount = calls.length;
     const functionSignatures: Uint8Array[] = [];
     const signatureLengths: number[] = [];
     const functionArgs: bigint[][] = [];
@@ -319,9 +261,16 @@ export class Eip712AccountV2 {
     const isPublic: boolean[] = [];
     const hideMsgSender: boolean[] = [];
     const isStatic: boolean[] = [];
+    const argsTypeStrings: Uint8Array[] = [];
+    const argsTypeStringLengths: number[] = [];
+    const merkleProofArrays: Fr[][] = [];
+    const merkleLeafIndices: number[] = [];
+    const fcTypeHashes: Uint8Array[] = [];
+    const argsTypeHashes: Uint8Array[] = [];
 
-    for (let i = 0; i < ACCOUNT_MAX_CALLS_V2; i++) {
+    for (let i = 0; i < callCount; i++) {
       const call = calls[i];
+      const slotNum = i + 1;
 
       // Function signature
       const sigBytes = new TextEncoder().encode(call.functionSignature);
@@ -342,17 +291,23 @@ export class Eip712AccountV2 {
       isPublic.push(call.isPublic ?? false);
       hideMsgSender.push(call.hideMsgSender ?? false);
       isStatic.push(call.isStatic ?? false);
+
+      // Per-call type string (Arguments{N})
+      const typeString = buildArgumentsTypeString(`Arguments${slotNum}`, call.argTypes);
+      const tsBytes = new TextEncoder().encode(typeString);
+      const argsTS = new Uint8Array(MAX_ARGS_TYPE_STRING_LEN);
+      argsTS.set(tsBytes.slice(0, MAX_ARGS_TYPE_STRING_LEN));
+      argsTypeStrings.push(argsTS);
+      argsTypeStringLengths.push(Math.min(tsBytes.length, MAX_ARGS_TYPE_STRING_LEN));
+
+      // Per-call Merkle proof
+      merkleProofArrays.push(merkleProofs[i].siblingPath);
+      merkleLeafIndices.push(merkleProofs[i].leafIndex);
+
+      // Per-call type hashes
+      fcTypeHashes.push(hexToBytes(computeFcTypeHashBytes(`FunctionCall${slotNum}`, call.argTypes)));
+      argsTypeHashes.push(hexToBytes(computeArgsTypeHashBytes(slotNum, call.argTypes)));
     }
-
-    // Shared type string (unified "Arguments" struct)
-    const typeString = buildArgumentsTypeString("Arguments", unifiedArgTypes);
-    const tsBytes = new TextEncoder().encode(typeString);
-    const argsTypeString = new Uint8Array(MAX_ARGS_TYPE_STRING_LEN);
-    argsTypeString.set(tsBytes.slice(0, MAX_ARGS_TYPE_STRING_LEN));
-
-    // Shared pre-computed type hashes (Approach 2)
-    const fcTypeHash = hexToBytes(computeFcTypeHashBytes("FunctionCall", unifiedArgTypes));
-    const argsTypeHash = hexToBytes(computeArgsTypeHashBytes(unifiedArgTypes));
 
     // Wallet name
     const walletNameBytes = new TextEncoder().encode(accountData.walletName);
@@ -374,12 +329,12 @@ export class Eip712AccountV2 {
       isPublic,
       hideMsgSender,
       isStatic,
-      argsTypeString,
-      argsTypeStringLength: Math.min(tsBytes.length, MAX_ARGS_TYPE_STRING_LEN),
-      merkleProof: merkleProof.siblingPath,
-      merkleLeafIndex: merkleProof.leafIndex,
-      fcTypeHash,
-      argsTypeHash,
+      argsTypeStrings,
+      argsTypeStringLengths,
+      merkleProofs: merkleProofArrays,
+      merkleLeafIndices,
+      fcTypeHashes,
+      argsTypeHashes,
       walletName,
       walletNameLength: Math.min(walletNameBytes.length, MAX_SIGNATURE_SIZE_V2),
       walletVersion,
@@ -390,22 +345,20 @@ export class Eip712AccountV2 {
   }
 
   /**
-   * Serialize V2 witness to capsule fields (175 Fields).
+   * Serialize V2 witness to capsule fields.
    *
-   * Layout:
-   *   [0-2]:     Signature (3)
-   *   [3-130]:   4 calls × 32 fields (128)
-   *   [131-162]: Shared type/proof data (32)
-   *   [163-174]: Metadata (12)
+   * Layout: 3 + N*32 (call data) + N*32 (type/proof per call) + 12 (metadata)
+   * Total: 15 + 64*N fields
+   * N=1: 79, N=2: 143, N=3: 207, N=4: 271
    */
-  private serializeWitnessV2_2ToCapsule(data: Eip712OracleDataV2_2): Fr[] {
+  private serializeWitnessV2_2ToCapsule(data: Eip712OracleDataV2_2, callCount: number): Fr[] {
     const fields: Fr[] = [];
 
     // [0-2]: Signature (64 bytes -> 3 fields: 31+31+2)
     fields.push(...this.packBytes(data.ecdsaSignature, [31, 31, 2]));
 
-    // [3-130]: 4 calls, each 32 fields
-    for (let callIdx = 0; callIdx < ACCOUNT_MAX_CALLS_V2; callIdx++) {
+    // N calls, each 32 fields
+    for (let callIdx = 0; callIdx < callCount; callIdx++) {
       // Function signature (128 bytes -> 5 fields: 4×31 + 1×4)
       fields.push(
         ...this.packBytes(data.functionSignatures[callIdx], [31, 31, 31, 31, 4]),
@@ -434,30 +387,32 @@ export class Eip712AccountV2 {
       fields.push(Fr.ZERO);
     }
 
-    // [131-162]: Shared type/proof data (32 fields)
-    // Args type string (256 bytes -> 9 fields: 8×31 + 1×8)
-    fields.push(
-      ...this.packBytes(data.argsTypeString, [31, 31, 31, 31, 31, 31, 31, 31, 8]),
-    );
+    // N type/proof blocks, each 32 fields
+    for (let callIdx = 0; callIdx < callCount; callIdx++) {
+      // Args type string (256 bytes -> 9 fields: 8×31 + 1×8)
+      fields.push(
+        ...this.packBytes(data.argsTypeStrings[callIdx], [31, 31, 31, 31, 31, 31, 31, 31, 8]),
+      );
 
-    // Args type string length
-    fields.push(new Fr(data.argsTypeStringLength));
+      // Args type string length
+      fields.push(new Fr(data.argsTypeStringLengths[callIdx]));
 
-    // Merkle proof (17 fields)
-    for (let i = 0; i < MERKLE_DEPTH; i++) {
-      fields.push(data.merkleProof[i]);
+      // Merkle proof (17 fields)
+      for (let i = 0; i < MERKLE_DEPTH; i++) {
+        fields.push(data.merkleProofs[callIdx][i]);
+      }
+
+      // Merkle leaf index
+      fields.push(new Fr(data.merkleLeafIndices[callIdx]));
+
+      // FunctionCall type hash (32 bytes -> 2 fields: 31+1)
+      fields.push(...this.packBytes(data.fcTypeHashes[callIdx], [31, 1]));
+
+      // Arguments type hash (32 bytes -> 2 fields: 31+1)
+      fields.push(...this.packBytes(data.argsTypeHashes[callIdx], [31, 1]));
     }
 
-    // Merkle leaf index
-    fields.push(new Fr(data.merkleLeafIndex));
-
-    // FunctionCall type hash (32 bytes -> 2 fields: 31+1)
-    fields.push(...this.packBytes(data.fcTypeHash, [31, 1]));
-
-    // Arguments type hash (32 bytes -> 2 fields: 31+1)
-    fields.push(...this.packBytes(data.argsTypeHash, [31, 1]));
-
-    // [163-174]: Metadata (12 fields)
+    // Metadata (12 fields)
     // wallet_name (128 bytes -> 5 fields)
     fields.push(...this.packBytes(data.walletName, [31, 31, 31, 31, 4]));
 
@@ -483,7 +438,7 @@ export class Eip712AccountV2 {
   }
 
   // ==========================================================================
-  // Authwit Methods
+  // Authwit Methods (unchanged — single call, unnumbered Arguments)
   // ==========================================================================
 
   /**
@@ -550,7 +505,7 @@ export class Eip712AccountV2 {
 
     // Pre-computed type hashes (Approach 2)
     const fcAuthTypeHash = hexToBytes(computeFcTypeHashBytes("Arguments", call.argTypes));
-    const argsTypeHash = hexToBytes(computeArgsTypeHashBytes(call.argTypes));
+    const argsTypeHash = hexToBytes(computeArgsTypeHashBytes(0, call.argTypes));
 
     return {
       ecdsaSignature,

@@ -2,12 +2,12 @@
  * Merkle Tree Data for EIP-712 V2 Variable Argument Types (Approach 2)
  *
  * Provides Merkle proof lookup for FunctionCall type hashes.
- * Approach 2: Merkle-verifies type_hash(FunctionCall) instead of
- * type_hash(Arguments), saving keccak256 calls in the circuit.
+ * Approach 2: Merkle-verifies type_hash(FunctionCall{N}) instead of
+ * type_hash(Arguments{N}), saving keccak256 calls in the circuit.
  *
- * Two trees:
- * - FunctionCall tree: fc_encode_type = FC_PRIMARY + args_type_string
- * - Arguments tree:    fc_encode_type = FC_AUTH_PRIMARY + args_type_string + AUTHWIT_APP_DOMAIN_DEF
+ * Five trees:
+ * - FunctionCall1..4 trees: fc_encode_type = FC_PRIMARIES[N] + args_type_string
+ * - Arguments tree:         fc_encode_type = FC_AUTH_PRIMARY + args_type_string + AUTHWIT_APP_DOMAIN_DEF
  *
  * Fast path: pre-computed proofs from static JSON for argCount 0..5 (~0.9MB).
  * Fallback: on-demand tree construction for argCount 6..10 (rare).
@@ -20,7 +20,7 @@ import { Fr } from "@aztec/aztec.js/fields";
 import type { ArgumentType } from "./eip712-types-v2.js";
 import {
   buildArgumentsTypeString,
-  FC_PRIMARY,
+  FC_PRIMARIES,
   FC_AUTH_PRIMARY,
   AUTHWIT_APP_DOMAIN_DEF,
 } from "./eip712-types-v2.js";
@@ -31,8 +31,14 @@ import treeData from "./merkle-tree-data.generated.json" with { type: "json" };
 // Hardcoded Merkle Roots (from generate-merkle-trees.ts)
 // =============================================================================
 
-export const MERKLE_ROOT_FC =
-  "0x2f6722fe2ae340afcb0448978e464debf48ad5451f647b24f2aec095f59eeb11" as const;
+export const MERKLE_ROOT_FC_1 =
+  "0x23807fde3749e9b5ddbc6c91886cc6e55280139ed5518a318fb21af017089c94" as const;
+export const MERKLE_ROOT_FC_2 =
+  "0x1b95d5f26019d68281772cf97daae098abad03aff858c1790ec3082b717a0565" as const;
+export const MERKLE_ROOT_FC_3 =
+  "0x02080475653ec163fc95413db7dc583f5b7e732d02cf9a6e00ffb8fe9117f4b4" as const;
+export const MERKLE_ROOT_FC_4 =
+  "0x21f9fe446360ae84bb7119f92dcfb979bb8731016aa844f9ce71437bd5734d90" as const;
 export const MERKLE_ROOT_FC_AUTH =
   "0x054a9fe2ce02ae6f96b01ea4962e3d41b2da0856e4027a2e2c53cf04c3271eda" as const;
 
@@ -47,22 +53,38 @@ const MAX_ARGS = 10;
 const PADDED_SIZE = 1 << MERKLE_DEPTH; // 131072
 
 // =============================================================================
+// Helpers
+// =============================================================================
+
+/**
+ * Derive the Arguments struct name from a tree struct name.
+ * "FunctionCall1" → "Arguments1", "FunctionCall2" → "Arguments2", etc.
+ * "Arguments" → "Arguments" (authwit)
+ */
+function getArgsStructName(structName: string): string {
+  if (structName.startsWith("FunctionCall")) {
+    return `Arguments${structName.replace("FunctionCall", "")}`;
+  }
+  return "Arguments";
+}
+
+// =============================================================================
 // FC encode_type builder (Approach 2)
 // =============================================================================
 
 /**
  * Build the full encode_type string for the given tree.
- * @param structName - "FunctionCall" (entrypoint) or "Arguments" (authwit)
+ * @param structName - "FunctionCall1".."FunctionCall4" (entrypoint) or "Arguments" (authwit)
  */
 function buildFcEncodeType(structName: string, argsTypeString: string): string {
-  switch (structName) {
-    case "FunctionCall":
-      return FC_PRIMARY + argsTypeString;
-    case "Arguments":
-      return FC_AUTH_PRIMARY + argsTypeString + AUTHWIT_APP_DOMAIN_DEF;
-    default:
-      throw new Error(`Unknown struct name: ${structName}`);
+  if (structName.startsWith("FunctionCall")) {
+    const n = parseInt(structName.replace("FunctionCall", ""));
+    return FC_PRIMARIES[n] + argsTypeString;
   }
+  if (structName === "Arguments") {
+    return FC_AUTH_PRIMARY + argsTypeString + AUTHWIT_APP_DOMAIN_DEF;
+  }
+  throw new Error(`Unknown struct name: ${structName}`);
 }
 
 /**
@@ -124,12 +146,13 @@ const treeCache = new Map<string, MerkleTreeRuntime>();
 
 /**
  * Enumerate all valid type strings (0..10 args × 3 types).
+ * @param argsStructName - The struct name to use (e.g. "Arguments1", "Arguments")
  */
-function enumerateAllTypeStrings(): string[] {
+function enumerateAllTypeStrings(argsStructName: string = "Arguments"): string[] {
   const results: string[] = [];
   for (let argCount = 0; argCount <= MAX_ARGS; argCount++) {
     if (argCount === 0) {
-      results.push(buildArgumentsTypeString("Arguments", []));
+      results.push(buildArgumentsTypeString(argsStructName, []));
       continue;
     }
     const totalCombinations = 3 ** argCount;
@@ -140,7 +163,7 @@ function enumerateAllTypeStrings(): string[] {
         types.push(ARGUMENT_TYPES_ALL[remaining % 3]);
         remaining = Math.floor(remaining / 3);
       }
-      results.push(buildArgumentsTypeString("Arguments", types));
+      results.push(buildArgumentsTypeString(argsStructName, types));
     }
   }
   return results;
@@ -158,7 +181,8 @@ async function getOrBuildTree(
 
   const { MerkleTreeCalculator } = await import("@aztec/foundation/trees");
 
-  const argsTypeStrings = enumerateAllTypeStrings();
+  const argsStructName = getArgsStructName(structName);
+  const argsTypeStrings = enumerateAllTypeStrings(argsStructName);
   const leafFields = argsTypeStrings.map((argsTS) => {
     const fcEncodeType = buildFcEncodeType(structName, argsTS);
     return stringToField(fcEncodeType);
@@ -198,7 +222,7 @@ export interface MerkleProof {
  * Fast path: looks up pre-computed proof from static JSON (argCount 0..5).
  * Fallback: builds the full tree at runtime (argCount 6..10).
  *
- * @param structName - "FunctionCall" (entrypoint) or "Arguments" (authwit)
+ * @param structName - "FunctionCall1".."FunctionCall4" (entrypoint) or "Arguments" (authwit)
  * @param argTypes - The argument types for this specific call
  * @returns The Merkle proof (leaf index + sibling path)
  */
@@ -206,7 +230,8 @@ export async function getMerkleProof(
   structName: string,
   argTypes: ArgumentType[],
 ): Promise<MerkleProof> {
-  const argsTypeString = buildArgumentsTypeString("Arguments", argTypes);
+  const argsStructName = getArgsStructName(structName);
+  const argsTypeString = buildArgumentsTypeString(argsStructName, argTypes);
   const fcEncodeType = buildFcEncodeType(structName, argsTypeString);
   const leafField = stringToField(fcEncodeType);
   const hexKey = leafField.toString();
@@ -236,8 +261,14 @@ export async function getMerkleProof(
  */
 export function getMerkleRoot(structName: string): string {
   switch (structName) {
-    case "FunctionCall":
-      return MERKLE_ROOT_FC;
+    case "FunctionCall1":
+      return MERKLE_ROOT_FC_1;
+    case "FunctionCall2":
+      return MERKLE_ROOT_FC_2;
+    case "FunctionCall3":
+      return MERKLE_ROOT_FC_3;
+    case "FunctionCall4":
+      return MERKLE_ROOT_FC_4;
     case "Arguments":
       return MERKLE_ROOT_FC_AUTH;
     default:
@@ -250,10 +281,11 @@ export function getMerkleRoot(structName: string): string {
  * This is keccak256(fc_encode_type) % BN254_FR_MODULUS.
  */
 export function computeFcTypeHashField(
-  structName: "FunctionCall" | "Arguments",
+  structName: string,
   argTypes: ArgumentType[],
 ): Fr {
-  const argsTypeString = buildArgumentsTypeString("Arguments", argTypes);
+  const argsStructName = getArgsStructName(structName);
+  const argsTypeString = buildArgumentsTypeString(argsStructName, argTypes);
   const fcEncodeType = buildFcEncodeType(structName, argsTypeString);
   return stringToField(fcEncodeType);
 }
@@ -263,10 +295,11 @@ export function computeFcTypeHashField(
  * This is the 32-byte hash that Noir receives as fc_type_hashes / fc_auth_type_hash.
  */
 export function computeFcTypeHashBytes(
-  structName: "FunctionCall" | "Arguments",
+  structName: string,
   argTypes: ArgumentType[],
 ): Hex {
-  const argsTypeString = buildArgumentsTypeString("Arguments", argTypes);
+  const argsStructName = getArgsStructName(structName);
+  const argsTypeString = buildArgumentsTypeString(argsStructName, argTypes);
   const fcEncodeType = buildFcEncodeType(structName, argsTypeString);
   return keccak256(encodePacked(["string"], [fcEncodeType]));
 }
@@ -274,9 +307,13 @@ export function computeFcTypeHashBytes(
 /**
  * Compute the Arguments type_hash as raw keccak256 bytes (for oracle data).
  * This is the 32-byte hash that Noir receives as args_type_hashes / args_type_hash.
+ *
+ * @param slotNumber - 1-4 for entrypoint (Arguments1..4), 0 for authwit (Arguments)
+ * @param argTypes - The argument types
  */
-export function computeArgsTypeHashBytes(argTypes: ArgumentType[]): Hex {
-  const argsTypeString = buildArgumentsTypeString("Arguments", argTypes);
+export function computeArgsTypeHashBytes(slotNumber: number, argTypes: ArgumentType[]): Hex {
+  const structName = slotNumber === 0 ? "Arguments" : `Arguments${slotNumber}`;
+  const argsTypeString = buildArgumentsTypeString(structName, argTypes);
   return keccak256(encodePacked(["string"], [argsTypeString]));
 }
 

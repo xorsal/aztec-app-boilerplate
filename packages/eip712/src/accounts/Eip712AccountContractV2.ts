@@ -2,7 +2,7 @@
  * EIP-712 V2 Account Contract Implementation
  *
  * V2 version with variable argument types per function call.
- * Each argument can be bytes32, uint256, or int256, enabling human-readable
+ * Each argument can be bytes32, uint256, or address, enabling human-readable
  * display in MetaMask. Type validity is constrained via Merkle tree whitelist.
  */
 

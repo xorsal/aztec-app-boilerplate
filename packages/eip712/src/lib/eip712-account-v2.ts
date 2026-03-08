@@ -2,7 +2,7 @@
  * EIP-712 V2 Account Class
  *
  * Handles signing and capsule creation for the V2 contract with variable argument types.
- * Each argument can be bytes32, uint256, or int256 (chosen by the frontend).
+ * Each argument can be bytes32, uint256, or address (chosen by the frontend).
  *
  * Per-slot design: Each call slot has its own FunctionCall{N} and Arguments{N} type.
  * No padding — callCount = actual number of calls.
@@ -40,7 +40,7 @@ export interface FunctionCallInputV2 {
   targetAddress: bigint;
   functionSignature: string;
   args: bigint[];
-  /** Per-argument EIP-712 types (bytes32, uint256, int256) */
+  /** Per-argument EIP-712 types (bytes32, uint256, address) */
   argTypes: ArgumentType[];
   isPublic?: boolean;
   hideMsgSender?: boolean;
@@ -397,9 +397,12 @@ export class Eip712AccountV2 {
       // Args type string length
       fields.push(new Fr(data.argsTypeStringLengths[callIdx]));
 
-      // Merkle proof (17 fields)
+      // Merkle proof (MERKLE_DEPTH fields + padding to 17)
       for (let i = 0; i < MERKLE_DEPTH; i++) {
         fields.push(data.merkleProofs[callIdx][i]);
+      }
+      for (let i = MERKLE_DEPTH; i < 17; i++) {
+        fields.push(Fr.ZERO);
       }
 
       // Merkle leaf index
@@ -564,9 +567,12 @@ export class Eip712AccountV2 {
     // [41]: Args type string length
     fields.push(new Fr(data.argsTypeStringLength));
 
-    // [42-58]: Merkle proof
+    // [42-58]: Merkle proof (MERKLE_DEPTH fields + padding to 17)
     for (let i = 0; i < MERKLE_DEPTH; i++) {
       fields.push(data.merkleProof[i]);
+    }
+    for (let i = MERKLE_DEPTH; i < 17; i++) {
+      fields.push(Fr.ZERO);
     }
 
     // [59]: Merkle leaf index

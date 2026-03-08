@@ -27,11 +27,10 @@ import { Fr } from "@aztec/aztec.js/fields";
 // Constants
 // =============================================================================
 
-const ARGUMENT_TYPES = ["bytes32", "uint256", "int256"] as const;
-const MAX_ARGS = 10;
-const MAX_ARGS_IN_JSON = 5; // Only include proofs for argCount 0..5 in the JSON (~0.9MB vs ~299MB)
-const TREE_DEPTH = 17;
-const PADDED_SIZE = 1 << TREE_DEPTH; // 131072
+const ARGUMENT_TYPES = ["bytes32", "uint256", "address"] as const;
+const MAX_ARGS = 5;
+const TREE_DEPTH = 9;
+const PADDED_SIZE = 1 << TREE_DEPTH; // 512
 
 /** BN254 scalar field modulus */
 const BN254_FR_MODULUS =
@@ -311,26 +310,17 @@ async function main() {
   outputNoirConstants(trees);
   outputTypeScriptData(trees);
 
-  // Write JSON data for TS consumption (only proofs for argCount 0..MAX_ARGS_IN_JSON)
-  const jsonOutput: Record<string, unknown> = {
-    maxArgsInJson: MAX_ARGS_IN_JSON,
-  };
+  // Write JSON data for TS consumption (all proofs included since MAX_ARGS=5)
+  const jsonOutput: Record<string, unknown> = {};
 
   for (const tree of trees) {
     const proofs: Record<string, { leafIndex: number; siblingPath: string[] }> =
       {};
-    let includedCount = 0;
-    let skippedCount = 0;
     for (const [key, proof] of tree.proofs.entries()) {
-      if (proof.argCount > MAX_ARGS_IN_JSON) {
-        skippedCount++;
-        continue;
-      }
       proofs[key] = {
         leafIndex: proof.leafIndex,
         siblingPath: proof.siblingPath.map((f) => f.toString()),
       };
-      includedCount++;
     }
 
     jsonOutput[tree.structName] = {
@@ -339,7 +329,7 @@ async function main() {
       proofs,
     };
 
-    console.log(`  ${tree.structName}: ${includedCount} proofs included, ${skippedCount} skipped (argCount > ${MAX_ARGS_IN_JSON})`);
+    console.log(`  ${tree.structName}: ${tree.proofs.size} proofs included`);
   }
 
   // Write to file

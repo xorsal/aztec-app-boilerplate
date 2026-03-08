@@ -46,8 +46,8 @@ describe("EIP-712 V2 Types", () => {
       expect(MAX_ARGS_TYPE_STRING_LEN).toBe(256);
     });
 
-    it("should have MERKLE_DEPTH = 17", () => {
-      expect(MERKLE_DEPTH).toBe(17);
+    it("should have MERKLE_DEPTH = 9", () => {
+      expect(MERKLE_DEPTH).toBe(9);
     });
 
     it("should have valid EIP712_WITNESS_V2_SLOTS for keys 1-4", () => {
@@ -83,7 +83,7 @@ describe("EIP-712 V2 Types", () => {
       const types: ArgumentType[] = [
         "bytes32",
         "uint256",
-        "int256",
+        "address",
         "bytes32",
         "uint256",
       ];
@@ -91,7 +91,7 @@ describe("EIP-712 V2 Types", () => {
       expect(result).toHaveLength(5);
       expect(result[0]).toEqual({ name: "argument1", type: "bytes32" });
       expect(result[1]).toEqual({ name: "argument2", type: "uint256" });
-      expect(result[2]).toEqual({ name: "argument3", type: "int256" });
+      expect(result[2]).toEqual({ name: "argument3", type: "address" });
       expect(result[3]).toEqual({ name: "argument4", type: "bytes32" });
       expect(result[4]).toEqual({ name: "argument5", type: "uint256" });
     });
@@ -122,10 +122,10 @@ describe("EIP-712 V2 Types", () => {
       const result = buildArgumentsTypeString("Arguments2", [
         "bytes32",
         "uint256",
-        "int256",
+        "address",
       ]);
       expect(result).toBe(
-        "Arguments2(bytes32 argument1,uint256 argument2,int256 argument3)",
+        "Arguments2(bytes32 argument1,uint256 argument2,address argument3)",
       );
     });
 
@@ -165,7 +165,7 @@ describe("EIP-712 V2 Types", () => {
     it("should handle 2 calls with different arg types", () => {
       const types = buildEntrypointTypes([
         ["bytes32", "uint256"],
-        ["int256"],
+        ["address"],
       ]);
       expect(types.FunctionCall1).toBeDefined();
       expect(types.FunctionCall2).toBeDefined();
@@ -174,14 +174,14 @@ describe("EIP-712 V2 Types", () => {
         { name: "argument2", type: "uint256" },
       ]);
       expect(types.Arguments2).toEqual([
-        { name: "argument1", type: "int256" },
+        { name: "argument1", type: "address" },
       ]);
     });
 
     it("should build EntrypointAuthorization with per-slot FunctionCall references", () => {
       const types = buildEntrypointTypes([
         ["bytes32", "uint256"],
-        ["int256"],
+        ["address"],
       ]);
       expect(types.EntrypointAuthorization).toContainEqual({
         name: "functionCall1",
@@ -204,11 +204,11 @@ describe("EIP-712 V2 Types", () => {
     });
 
     it("should build correct Arguments type definition", () => {
-      const types = buildAuthwitTypes(["bytes32", "uint256", "int256"]);
+      const types = buildAuthwitTypes(["bytes32", "uint256", "address"]);
       expect(types.Arguments).toEqual([
         { name: "argument1", type: "bytes32" },
         { name: "argument2", type: "uint256" },
-        { name: "argument3", type: "int256" },
+        { name: "argument3", type: "address" },
       ]);
     });
 

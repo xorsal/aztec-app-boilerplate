@@ -104,7 +104,7 @@ describe("Merkle Trees", () => {
     it("should produce different fields for different type combos", () => {
       const field1 = computeFcTypeHashField("Arguments", ["bytes32"]);
       const field2 = computeFcTypeHashField("Arguments", ["uint256"]);
-      const field3 = computeFcTypeHashField("Arguments", ["int256"]);
+      const field3 = computeFcTypeHashField("Arguments", ["address"]);
 
       expect(field1.toBigInt()).not.toBe(field2.toBigInt());
       expect(field2.toBigInt()).not.toBe(field3.toBigInt());
@@ -114,11 +114,11 @@ describe("Merkle Trees", () => {
     it("should produce same result for same inputs", () => {
       const field1 = computeFcTypeHashField("FunctionCall1", [
         "bytes32",
-        "int256",
+        "address",
       ]);
       const field2 = computeFcTypeHashField("FunctionCall1", [
         "bytes32",
-        "int256",
+        "address",
       ]);
       expect(field1.toBigInt()).toBe(field2.toBigInt());
     });
@@ -136,7 +136,7 @@ describe("Merkle Trees", () => {
     });
 
     it("computeArgsTypeHashBytes returns raw keccak256 of args_type_string (authwit, slot 0)", () => {
-      const argTypes: ArgumentType[] = ["bytes32", "int256"];
+      const argTypes: ArgumentType[] = ["bytes32", "address"];
       const argsTypeString = buildArgumentsTypeString("Arguments", argTypes);
       const expected = keccak256(encodePacked(["string"], [argsTypeString]));
 
@@ -145,7 +145,7 @@ describe("Merkle Trees", () => {
     });
 
     it("computeArgsTypeHashBytes returns raw keccak256 of args_type_string (entrypoint, slot 1)", () => {
-      const argTypes: ArgumentType[] = ["bytes32", "int256"];
+      const argTypes: ArgumentType[] = ["bytes32", "address"];
       const argsTypeString = buildArgumentsTypeString("Arguments1", argTypes);
       const expected = keccak256(encodePacked(["string"], [argsTypeString]));
 
@@ -169,7 +169,7 @@ describe("Merkle Trees", () => {
       const proof = await getMerkleProof("FunctionCall1", [
         "bytes32",
         "uint256",
-        "int256",
+        "address",
       ]);
 
       expect(proof.leafIndex).toBeGreaterThanOrEqual(0);
@@ -190,13 +190,13 @@ describe("Merkle Trees", () => {
       expect(proof.siblingPath).toHaveLength(MERKLE_DEPTH);
     });
 
-    it("should return valid proof for max args (10 args, fallback path)", async () => {
-      const argTypes: ArgumentType[] = Array(10).fill("uint256");
+    it("should return valid proof for max args (5 args)", async () => {
+      const argTypes: ArgumentType[] = Array(5).fill("uint256");
       const proof = await getMerkleProof("Arguments", argTypes);
 
       expect(proof.leafIndex).toBeGreaterThanOrEqual(0);
       expect(proof.siblingPath).toHaveLength(MERKLE_DEPTH);
-    }, 60_000);
+    });
 
     it("should return consistent proofs for the same input", async () => {
       const proof1 = await getMerkleProof("FunctionCall1", [
@@ -223,29 +223,9 @@ describe("Merkle Trees", () => {
       expect(proof1.leafIndex).not.toBe(proof2.leafIndex);
     });
 
-    it("JSON-path and fallback-path should produce identical proofs", async () => {
-      // Use 5 args (boundary of JSON) to verify JSON path works correctly.
-      // Then use 6 args (fallback) and verify structure is consistent.
-      const jsonArgTypes: ArgumentType[] = Array(5).fill("bytes32");
-      const fallbackArgTypes: ArgumentType[] = Array(6).fill("bytes32");
-
-      const jsonProof = await getMerkleProof("FunctionCall1", jsonArgTypes);
-      const fallbackProof = await getMerkleProof("FunctionCall1", fallbackArgTypes);
-
-      // Both should have valid structure
-      expect(jsonProof.siblingPath).toHaveLength(MERKLE_DEPTH);
-      expect(fallbackProof.siblingPath).toHaveLength(MERKLE_DEPTH);
-
-      // Leaf indices should be non-negative
-      expect(jsonProof.leafIndex).toBeGreaterThanOrEqual(0);
-      expect(fallbackProof.leafIndex).toBeGreaterThanOrEqual(0);
-
-      // Different arg counts → different leaves → different indices
-      expect(jsonProof.leafIndex).not.toBe(fallbackProof.leafIndex);
-
-      // Sibling paths should have Fr elements
-      jsonProof.siblingPath.forEach((node) => expect(node).toBeInstanceOf(Fr));
-      fallbackProof.siblingPath.forEach((node) => expect(node).toBeInstanceOf(Fr));
-    }, 60_000);
+    it("should throw for arg count exceeding MAX_ARGS", () => {
+      const argTypes: ArgumentType[] = Array(6).fill("bytes32");
+      expect(() => getMerkleProof("FunctionCall1", argTypes)).toThrow();
+    });
   });
 });

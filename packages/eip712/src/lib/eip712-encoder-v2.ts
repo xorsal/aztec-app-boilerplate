@@ -2,7 +2,7 @@
  * EIP-712 V2 Encoder for Aztec Entrypoint Authorization
  *
  * Builds the EIP-712 typed data structure for the V2 contract with:
- * - Variable argument types (bytes32, uint256, int256 per argument)
+ * - Variable argument types (bytes32, uint256, address per argument)
  * - Per-slot FunctionCall{N} and Arguments{N} types
  * - AccountData and TxMetadata sub-structs
  * - Merkle tree whitelist for Arguments type hashes
@@ -122,6 +122,8 @@ export class Eip712EncoderV2 {
         const val = fc.arguments[`argument${i + 1}`] ?? 0n;
         if (argTypes[i] === "bytes32") {
           values[`argument${i + 1}`] = pad(toHex(val), { size: 32 });
+        } else if (argTypes[i] === "address") {
+          values[`argument${i + 1}`] = pad(toHex(val), { size: 20 });
         } else {
           values[`argument${i + 1}`] = val;
         }
@@ -182,6 +184,8 @@ export class Eip712EncoderV2 {
       const val = functionCall.arguments[`argument${i + 1}`] ?? 0n;
       if (argTypes[i] === "bytes32") {
         argsValues[`argument${i + 1}`] = pad(toHex(val), { size: 32 });
+      } else if (argTypes[i] === "address") {
+        argsValues[`argument${i + 1}`] = pad(toHex(val), { size: 20 });
       } else {
         argsValues[`argument${i + 1}`] = val;
       }

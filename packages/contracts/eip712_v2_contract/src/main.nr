@@ -2,8 +2,8 @@
  * EIP-712 V2 Account Contract
  *
  * V2 of the EIP-712 account contract introduces variable argument types:
- * each argument can be bytes32, uint256, or int256, enabling human-readable
- * display in MetaMask (e.g., addresses as bytes32 hex instead of uint256 decimals).
+ * each argument can be bytes32, uint256, or address, enabling human-readable
+ * display in MetaMask (e.g., addresses as address type instead of uint256 decimals).
  *
  * Key differences from V1:
  * - Per-call-count entrypoints (entrypoint_1 through entrypoint_4)

@@ -2,7 +2,7 @@
  * E2E Tests: EIP-712 V2 Specific Scenarios
  *
  * Tests V2-specific behavior: unified FunctionCall type with per-argument
- * EIP-712 types (bytes32/uint256/int256), Merkle proof verification,
+ * EIP-712 types (bytes32/uint256/address), Merkle proof verification,
  * version toggle, and full read→increment→read cycle.
  *
  * Requires Aztec sandbox running. Counter contract is deployed in-browser.

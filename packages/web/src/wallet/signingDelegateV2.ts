@@ -2,7 +2,7 @@
  * MetaMask EIP-712 V2 Signing Delegate
  *
  * Bridges MetaMask's signTypedData with the V2 EIP-712 capsule system.
- * V2 adds per-argument type annotations (bytes32/uint256/int256) and
+ * V2 adds per-argument type annotations (bytes32/uint256/address) and
  * Merkle proofs for the variable argument type whitelist.
  *
  * Per-slot design: Each call slot has its own FunctionCall{N} and Arguments{N} type.
@@ -76,7 +76,7 @@ function inferArgTypes(
         types.push("bytes32");
         break;
       case "integer":
-        types.push(abiType.sign === "signed" ? "int256" : "uint256");
+        types.push("uint256");
         break;
       case "boolean":
         types.push("uint256");
@@ -462,9 +462,12 @@ export class MetaMaskEip712SigningDelegateV2
       // Args type string length
       fields.push(new Fr(data.argsTypeStringLengths[callIdx]));
 
-      // Merkle proof (17 fields)
+      // Merkle proof (MERKLE_DEPTH fields + padding to 17)
       for (let i = 0; i < MERKLE_DEPTH; i++) {
         fields.push(data.merkleProofs[callIdx][i]);
+      }
+      for (let i = MERKLE_DEPTH; i < 17; i++) {
+        fields.push(Fr.ZERO);
       }
 
       // Merkle leaf index

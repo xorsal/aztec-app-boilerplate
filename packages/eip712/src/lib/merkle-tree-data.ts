@@ -9,9 +9,7 @@
  * - FunctionCall1..4 trees: fc_encode_type = FC_PRIMARIES[N] + args_type_string
  * - Arguments tree:         fc_encode_type = FC_AUTH_PRIMARY + args_type_string + AUTHWIT_APP_DOMAIN_DEF
  *
- * Fast path: pre-computed proofs from static JSON for argCount 0..5 (~0.9MB).
- * Fallback: on-demand tree construction for argCount 6..10 (rare).
- *
+ * All proofs are pre-computed in static JSON (MAX_ARGS=5, 364 leaves per tree, depth 9).
  * Roots are hardcoded (deterministic, computed by generate-merkle-trees.ts).
  */
 
@@ -24,7 +22,6 @@ import {
   FC_AUTH_PRIMARY,
   AUTHWIT_APP_DOMAIN_DEF,
 } from "./eip712-types-v2.js";
-// Static pre-computed Merkle proofs (argCount 0..5 only, ~0.9MB)
 import treeData from "./merkle-tree-data.generated.json" with { type: "json" };
 
 // =============================================================================
@@ -32,25 +29,21 @@ import treeData from "./merkle-tree-data.generated.json" with { type: "json" };
 // =============================================================================
 
 export const MERKLE_ROOT_FC_1 =
-  "0x23807fde3749e9b5ddbc6c91886cc6e55280139ed5518a318fb21af017089c94" as const;
+  "0x0633271a5313ed24c0224cb0c3b1c473a393aa19c1a2c085b816049fb0664c72" as const;
 export const MERKLE_ROOT_FC_2 =
-  "0x1b95d5f26019d68281772cf97daae098abad03aff858c1790ec3082b717a0565" as const;
+  "0x1fff6ffbccdd0193cd86f012093853422edad7dab5b6cc22d6c6b6d664151fe6" as const;
 export const MERKLE_ROOT_FC_3 =
-  "0x02080475653ec163fc95413db7dc583f5b7e732d02cf9a6e00ffb8fe9117f4b4" as const;
+  "0x2c2ab955012fb60577f397a7cb81d49537ef371d368a42f3425d1944b0e4fa45" as const;
 export const MERKLE_ROOT_FC_4 =
-  "0x21f9fe446360ae84bb7119f92dcfb979bb8731016aa844f9ce71437bd5734d90" as const;
+  "0x265613959ca7750afaa1fa7979a7ecdeed16fa1e9b437a5f86f576b99ab3bcf6" as const;
 export const MERKLE_ROOT_FC_AUTH =
-  "0x054a9fe2ce02ae6f96b01ea4962e3d41b2da0856e4027a2e2c53cf04c3271eda" as const;
+  "0x10ea5cfa7846f28e2c7d96cb47a4afcf26b710641d78e7aae894a04d53c2da7a" as const;
 
-export const MERKLE_DEPTH = 17;
+export const MERKLE_DEPTH = 9;
 
 /** BN254 scalar field modulus */
 const BN254_FR_MODULUS =
   0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001n;
-
-const ARGUMENT_TYPES_ALL: ArgumentType[] = ["bytes32", "uint256", "int256"];
-const MAX_ARGS = 10;
-const PADDED_SIZE = 1 << MERKLE_DEPTH; // 131072
 
 // =============================================================================
 // Helpers
@@ -114,7 +107,6 @@ interface JsonTreeData {
 
 /**
  * Look up a pre-computed Merkle proof from the static JSON.
- * Returns null if the key is not found (argCount > maxArgsInJson).
  */
 function lookupJsonProof(
   structName: string,
@@ -133,81 +125,6 @@ function lookupJsonProof(
 }
 
 // =============================================================================
-// Fallback: lazy tree builder with caching (for argCount > maxArgsInJson)
-// =============================================================================
-
-interface MerkleTreeRuntime {
-  root: Fr;
-  getProof: (leafIndex: number) => Fr[];
-  getIndex: (leaf: Fr) => number;
-}
-
-const treeCache = new Map<string, MerkleTreeRuntime>();
-
-/**
- * Enumerate all valid type strings (0..10 args × 3 types).
- * @param argsStructName - The struct name to use (e.g. "Arguments1", "Arguments")
- */
-function enumerateAllTypeStrings(argsStructName: string = "Arguments"): string[] {
-  const results: string[] = [];
-  for (let argCount = 0; argCount <= MAX_ARGS; argCount++) {
-    if (argCount === 0) {
-      results.push(buildArgumentsTypeString(argsStructName, []));
-      continue;
-    }
-    const totalCombinations = 3 ** argCount;
-    for (let combo = 0; combo < totalCombinations; combo++) {
-      const types: ArgumentType[] = [];
-      let remaining = combo;
-      for (let pos = 0; pos < argCount; pos++) {
-        types.push(ARGUMENT_TYPES_ALL[remaining % 3]);
-        remaining = Math.floor(remaining / 3);
-      }
-      results.push(buildArgumentsTypeString(argsStructName, types));
-    }
-  }
-  return results;
-}
-
-/**
- * Build or retrieve a cached Merkle tree for the given struct name.
- * Only called as a fallback when the static JSON doesn't have the proof.
- */
-async function getOrBuildTree(
-  structName: string,
-): Promise<MerkleTreeRuntime> {
-  const cached = treeCache.get(structName);
-  if (cached) return cached;
-
-  const { MerkleTreeCalculator } = await import("@aztec/foundation/trees");
-
-  const argsStructName = getArgsStructName(structName);
-  const argsTypeStrings = enumerateAllTypeStrings(argsStructName);
-  const leafFields = argsTypeStrings.map((argsTS) => {
-    const fcEncodeType = buildFcEncodeType(structName, argsTS);
-    return stringToField(fcEncodeType);
-  });
-
-  while (leafFields.length < PADDED_SIZE) {
-    leafFields.push(Fr.ZERO);
-  }
-
-  const leafBuffers = leafFields.map((f) => f.toBuffer());
-  const calculator = await MerkleTreeCalculator.create(MERKLE_DEPTH);
-  const tree = await calculator.computeTree(leafBuffers);
-
-  const data: MerkleTreeRuntime = {
-    root: Fr.fromBuffer(tree.root),
-    getProof: (leafIndex: number) =>
-      tree.getSiblingPath(leafIndex).map((b: Buffer) => Fr.fromBuffer(b)),
-    getIndex: (leaf: Fr) => tree.getIndex(leaf.toBuffer()),
-  };
-
-  treeCache.set(structName, data);
-  return data;
-}
-
-// =============================================================================
 // Public API
 // =============================================================================
 
@@ -218,42 +135,30 @@ export interface MerkleProof {
 
 /**
  * Get a Merkle proof for a specific FunctionCall type hash (Approach 2).
- *
- * Fast path: looks up pre-computed proof from static JSON (argCount 0..5).
- * Fallback: builds the full tree at runtime (argCount 6..10).
+ * All proofs are pre-computed in the static JSON (MAX_ARGS=5, 364 leaves).
  *
  * @param structName - "FunctionCall1".."FunctionCall4" (entrypoint) or "Arguments" (authwit)
  * @param argTypes - The argument types for this specific call
  * @returns The Merkle proof (leaf index + sibling path)
  */
-export async function getMerkleProof(
+export function getMerkleProof(
   structName: string,
   argTypes: ArgumentType[],
-): Promise<MerkleProof> {
+): MerkleProof {
   const argsStructName = getArgsStructName(structName);
   const argsTypeString = buildArgumentsTypeString(argsStructName, argTypes);
   const fcEncodeType = buildFcEncodeType(structName, argsTypeString);
   const leafField = stringToField(fcEncodeType);
   const hexKey = leafField.toString();
 
-  // Fast path: static JSON lookup
-  const cached = lookupJsonProof(structName, hexKey);
-  if (cached) return cached;
-
-  // Fallback: build tree at runtime (argCount > maxArgsInJson)
-  const tree = await getOrBuildTree(structName);
-  const leafIndex = tree.getIndex(leafField);
-
-  if (leafIndex < 0) {
+  const proof = lookupJsonProof(structName, hexKey);
+  if (!proof) {
     throw new Error(
       `FunctionCall encode_type not found in ${structName} tree for argTypes: [${argTypes.join(", ")}]`,
     );
   }
 
-  return {
-    leafIndex,
-    siblingPath: tree.getProof(leafIndex),
-  };
+  return proof;
 }
 
 /**
@@ -318,10 +223,9 @@ export function computeArgsTypeHashBytes(slotNumber: number, argTypes: ArgumentT
 }
 
 /**
- * Pre-warm the tree caches. With static JSON lookup, this is a no-op for
- * common arg counts (0..5). Kept for API compatibility.
+ * Pre-warm the tree caches. No-op since all proofs are in static JSON.
+ * Kept for API compatibility.
  */
 export async function preWarmTrees(): Promise<void> {
-  // No-op: proofs for argCount 0..5 are served from static JSON.
-  // Fallback trees are built lazily only when needed (argCount 6..10).
+  // No-op: all proofs are pre-computed in static JSON.
 }

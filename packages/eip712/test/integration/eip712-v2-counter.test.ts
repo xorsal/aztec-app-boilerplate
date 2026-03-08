@@ -9,7 +9,7 @@
  * 5. Increment again and verify
  *
  * V2 differences from V1:
- * - Per-argument EIP-712 types (bytes32, uint256, int256) instead of fixed uint256[]
+ * - Per-argument EIP-712 types (bytes32, uint256, address) instead of fixed uint256[]
  * - Merkle tree whitelist for type validity
  * - Per-call-count entrypoints (entrypoint_1 through entrypoint_4) with per-slot types
  *
@@ -64,7 +64,7 @@ const TEST_PRIVATE_KEY =
  *
  * Field → bytes32 (addresses, hashes displayed as hex)
  * Unsigned integers → uint256
- * Signed integers → int256
+ * Signed integers → uint256
  * Everything else → bytes32 (safe default)
  */
 function noirTypeToArgumentType(abiType: AbiType): ArgumentType {
@@ -76,7 +76,7 @@ function noirTypeToArgumentType(abiType: AbiType): ArgumentType {
     case "field":
       return "bytes32";
     case "integer":
-      return abiType.sign === "unsigned" ? "uint256" : "int256";
+      return "uint256";
     case "boolean":
       return "uint256";
     default:

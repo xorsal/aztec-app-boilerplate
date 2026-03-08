@@ -2,8 +2,8 @@
  * EIP-712 V2 Types for Aztec Authwits
  *
  * V2 introduces variable argument types: each argument can be bytes32, uint256,
- * or int256 (instead of the fixed uint256[] in V1). This enables human-readable
- * display in MetaMask (e.g., addresses as bytes32 hex instead of uint256 decimals).
+ * or address (instead of the fixed uint256[] in V1). This enables human-readable
+ * display in MetaMask (e.g., addresses as address hex instead of uint256 decimals).
  *
  * The argument names are fixed (argument1, argument2, ...) — only types are variable.
  * A Merkle tree whitelist constrains valid type_hash(Arguments{N}) values.
@@ -18,13 +18,13 @@ import type { Hex } from "viem";
 // =============================================================================
 
 /** Allowed EIP-712 types for each argument position */
-export type ArgumentType = "bytes32" | "uint256" | "int256";
+export type ArgumentType = "bytes32" | "uint256" | "address";
 
 /** All allowed argument types */
 export const ARGUMENT_TYPES: ArgumentType[] = [
   "bytes32",
   "uint256",
-  "int256",
+  "address",
 ];
 
 // =============================================================================
@@ -98,11 +98,11 @@ export const MAX_SERIALIZED_ARGS_V2 = 20;
 /** Max function signature string length (same as V1) */
 export const MAX_SIGNATURE_SIZE_V2 = 128;
 
-/** Max Arguments type string length (e.g. "Arguments1(bytes32 argument1,uint256 argument2,...int256 argument10)") */
+/** Max Arguments type string length (e.g. "Arguments1(bytes32 argument1,uint256 argument2,...address argument5)") */
 export const MAX_ARGS_TYPE_STRING_LEN = 256;
 
-/** Merkle tree depth for Arguments whitelist (2^17 = 131072 leaves) */
-export const MERKLE_DEPTH = 17;
+/** Merkle tree depth for Arguments whitelist (2^9 = 512 leaves) */
+export const MERKLE_DEPTH = 9;
 
 // =============================================================================
 // Capsule Slots (must match Noir eip712_v2.nr)

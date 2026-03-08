@@ -285,7 +285,7 @@ describe("Eip712EncoderV2", () => {
       const argTypes: ArgumentType[] = [
         "bytes32",
         "uint256",
-        "int256",
+        "address",
         "bytes32",
       ];
       const typeString = buildArgumentsTypeString("Arguments2", argTypes);
@@ -355,7 +355,7 @@ describe("Eip712EncoderV2", () => {
       const args1TS = buildArgumentsTypeString("Arguments1", ["bytes32"]);
       const args2TS = buildArgumentsTypeString("Arguments2", [
         "uint256",
-        "int256",
+        "address",
       ]);
       const encodeType = Eip712EncoderV2.buildEntrypointEncodeType(
         args1TS,

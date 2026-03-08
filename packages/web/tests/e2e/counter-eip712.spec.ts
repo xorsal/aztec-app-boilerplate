@@ -5,7 +5,7 @@
  * Requires Aztec sandbox running. Counter contract is deployed in-browser.
  *
  * V1: Fixed uint256[] argument encoding, 5 call slots
- * V2: Per-argument EIP-712 types (bytes32/uint256/int256) with Merkle proofs, 2 call slots
+ * V2: Per-argument EIP-712 types (bytes32/uint256/address) with Merkle proofs, 2 call slots
  */
 
 import { test, expect } from "./fixtures/walletless";

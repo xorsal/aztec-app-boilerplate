@@ -47,15 +47,15 @@ const FC2_PRIMARY = FC_PRIMARIES[2];
 
 const NOIR_MERKLE_ROOTS = {
   MERKLE_ROOT_FC_1:
-    "0x23807fde3749e9b5ddbc6c91886cc6e55280139ed5518a318fb21af017089c94",
+    "0x0633271a5313ed24c0224cb0c3b1c473a393aa19c1a2c085b816049fb0664c72",
   MERKLE_ROOT_FC_2:
-    "0x1b95d5f26019d68281772cf97daae098abad03aff858c1790ec3082b717a0565",
+    "0x1fff6ffbccdd0193cd86f012093853422edad7dab5b6cc22d6c6b6d664151fe6",
   MERKLE_ROOT_FC_3:
-    "0x02080475653ec163fc95413db7dc583f5b7e732d02cf9a6e00ffb8fe9117f4b4",
+    "0x2c2ab955012fb60577f397a7cb81d49537ef371d368a42f3425d1944b0e4fa45",
   MERKLE_ROOT_FC_4:
-    "0x21f9fe446360ae84bb7119f92dcfb979bb8731016aa844f9ce71437bd5734d90",
+    "0x265613959ca7750afaa1fa7979a7ecdeed16fa1e9b437a5f86f576b99ab3bcf6",
   MERKLE_ROOT_FC_AUTH:
-    "0x054a9fe2ce02ae6f96b01ea4962e3d41b2da0856e4027a2e2c53cf04c3271eda",
+    "0x10ea5cfa7846f28e2c7d96cb47a4afcf26b710641d78e7aae894a04d53c2da7a",
 };
 
 const NOIR_DOMAIN_SEPARATOR =
@@ -129,11 +129,11 @@ describe("EIP-712 V2 Noir Compatibility", () => {
       expect(computed.toLowerCase()).toBe(hash.toLowerCase());
     });
 
-    it("Arguments type hash for mixed types (bytes32, uint256, int256)", () => {
-      const argTypes: ArgumentType[] = ["bytes32", "uint256", "int256"];
+    it("Arguments type hash for mixed types (bytes32, uint256, address)", () => {
+      const argTypes: ArgumentType[] = ["bytes32", "uint256", "address"];
       const typeString = buildArgumentsTypeString("Arguments2", argTypes);
       expect(typeString).toBe(
-        "Arguments2(bytes32 argument1,uint256 argument2,int256 argument3)",
+        "Arguments2(bytes32 argument1,uint256 argument2,address argument3)",
       );
       const hash = keccak256(encodePacked(["string"], [typeString]));
       const computed = Eip712EncoderV2.computeArgumentsTypeHash(
@@ -157,7 +157,7 @@ describe("EIP-712 V2 Noir Compatibility", () => {
     });
 
     it("FunctionCall type hash with different Arguments definition", () => {
-      const argTypes: ArgumentType[] = ["int256"];
+      const argTypes: ArgumentType[] = ["address"];
       const argsTypeString = buildArgumentsTypeString("Arguments1", argTypes);
       const encodeType = FC_PRIMARIES[1] + argsTypeString;
       const expected = keccak256(encodePacked(["string"], [encodeType]));
@@ -175,7 +175,7 @@ describe("EIP-712 V2 Noir Compatibility", () => {
   describe("Encode Type Construction", () => {
     it("buildEntrypointEncodeType has primary struct first, referenced types alphabetically sorted", () => {
       const args1Types: ArgumentType[] = ["bytes32", "uint256"];
-      const args2Types: ArgumentType[] = ["int256"];
+      const args2Types: ArgumentType[] = ["address"];
 
       const args1TypeString = buildArgumentsTypeString(
         "Arguments1",

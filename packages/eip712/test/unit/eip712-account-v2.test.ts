@@ -164,7 +164,7 @@ describe("Eip712AccountV2", () => {
           targetAddress: 2n,
           functionSignature: "func2(Field,Field)",
           args: [200n, 300n],
-          argTypes: ["uint256", "int256"],
+          argTypes: ["uint256", "address"],
         },
       ];
       const capsule = await account.createWitnessCapsule2(
@@ -190,7 +190,7 @@ describe("Eip712AccountV2", () => {
           targetAddress: 2n,
           functionSignature: "func2(Field,Field)",
           args: [200n, 300n],
-          argTypes: ["uint256", "int256"],
+          argTypes: ["uint256", "address"],
         },
         {
           targetAddress: 3n,

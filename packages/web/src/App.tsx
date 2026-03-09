@@ -1,5 +1,6 @@
 import { ConnectButton } from "./components/ConnectButton";
 import { CounterDisplay } from "./components/CounterDisplay";
+import { DripperDisplay } from "./components/DripperDisplay";
 
 export function App() {
   return (
@@ -11,6 +12,7 @@ export function App() {
 
       <main style={styles.main}>
         <CounterDisplay />
+        <DripperDisplay />
       </main>
 
       <footer style={styles.footer}>
@@ -52,8 +54,10 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     display: "flex",
     justifyContent: "center",
-    alignItems: "center",
+    alignItems: "flex-start",
     padding: "2rem",
+    gap: "1.5rem",
+    flexWrap: "wrap" as const,
   },
   footer: {
     textAlign: "center" as const,

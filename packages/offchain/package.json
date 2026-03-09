@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test:js": "vitest run",
-    "deploy": "tsx scripts/deploy.ts"
+    "deploy": "tsx scripts/deploy.ts",
+    "deploy:dripper": "tsx scripts/deploy-dripper.ts"
   },
   "dependencies": {
     "@aztec/accounts": "4.0.0-devnet.2-patch.1",
@@ -13,6 +14,7 @@
     "@aztec/pxe": "4.0.0-devnet.2-patch.1",
     "@aztec/stdlib": "4.0.0-devnet.2-patch.1",
     "@aztec/wallets": "4.0.0-devnet.2-patch.1",
+    "@defi-wonderland/aztec-standards": "4.0.0-devnet.2-patch.1",
     "@types/node": "22.5.1"
   },
   "devDependencies": {

@@ -5,6 +5,7 @@ import { AztecAddress } from "@aztec/stdlib/aztec-address";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
 import { CounterContract } from "../../../contracts/artifacts/Counter.js";
+import CounterContractArtifactJson from "../../../../target/counter_contract-Counter.json" with { type: "json" };
 
 const LS_KEY = "aztec_counter_contract_address";
 
@@ -34,7 +35,11 @@ export function CounterDisplay() {
     setDeploying(true);
     setError(null);
     try {
-      const contract = await CounterContract.deploy(wallet, address).send({
+      const deployMethod = CounterContract.deploy(wallet, address);
+      // Register Counter artifact before sending so the signing delegate can resolve it
+      const instance = await deployMethod.getInstance();
+      registerContractArtifact(instance.address, CounterContract.artifact, CounterContractArtifactJson);
+      const contract = await deployMethod.send({
         from: address,
         fee: sponsoredFpcAddress
           ? { paymentMethod: new SponsoredFeePaymentMethod(sponsoredFpcAddress) }
@@ -58,7 +63,7 @@ export function CounterDisplay() {
     const contractAddress = AztecAddress.fromString(contractAddr);
 
     // Register artifact for readable EIP-712 signing in MetaMask
-    registerContractArtifact(contractAddress, CounterContract.artifact);
+    registerContractArtifact(contractAddress, CounterContract.artifact, CounterContractArtifactJson);
 
     // Register with PXE so it knows about this contract (fetch instance from node)
     (async () => {

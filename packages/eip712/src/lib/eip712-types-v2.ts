@@ -89,8 +89,11 @@ export interface FunctionCallAuthorizationV2 {
 /** Max function calls per V2 entrypoint */
 export const MAX_ENTRYPOINT_CALLS = 4;
 
-/** Max arguments per function call */
-export const MAX_ARGS_V2 = 10;
+/** Max arguments per function call in EIP-712 type definitions (must match Merkle tree generator MAX_ARGS) */
+export const MAX_ARGS_V2 = 5;
+
+/** Max EIP-712 argument types covered by the Merkle tree (alias for clarity) */
+export const MERKLE_MAX_ARGS = MAX_ARGS_V2;
 
 /** Max function arguments (same as V1, for Aztec compatibility) */
 export const MAX_SERIALIZED_ARGS_V2 = 20;

@@ -35,6 +35,7 @@ export default defineConfig({
   esbuild: { target: "esnext" },
   resolve: { alias: CJS_ALIASES },
   server: {
+    host: true,
     port: 3001,
     headers: CROSS_ORIGIN_HEADERS,
     fs: { allow: ["../.."] },

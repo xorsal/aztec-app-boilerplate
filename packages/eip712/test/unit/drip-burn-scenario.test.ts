@@ -75,20 +75,20 @@ describe("Real-world scenario: SponsoredFPC + drip_to_public + burn_public", () 
         1n,
         contractAddress,
       );
-      expect(capsule.data).toHaveLength(207);
+      expect(capsule.data).toHaveLength(171);
     });
 
     it("fpc + single business call works (2 call slots)", async () => {
       const account = new Eip712AccountV2(TEST_PRIVATE_KEY);
       const contractAddress = AztecAddress.fromBigInt(999n);
 
-      // 2 calls → entrypoint_2, capsule size = 15 + 64*2 = 143
+      // 2 calls → entrypoint_2, capsule size = 9 + 54*2 = 117
       const capsule = await account.createWitnessCapsule2(
         [fpcCall, dripCall],
         1n,
         contractAddress,
       );
-      expect(capsule.data).toHaveLength(143);
+      expect(capsule.data).toHaveLength(117);
     });
 
     it("should reject 5 calls (exceeds MAX_ENTRYPOINT_CALLS)", async () => {

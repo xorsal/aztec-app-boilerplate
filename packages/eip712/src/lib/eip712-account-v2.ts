@@ -22,12 +22,11 @@ import {
   EIP712_AUTHWIT_V2_SLOT,
   MAX_SERIALIZED_ARGS_V2,
   MAX_SIGNATURE_SIZE_V2,
-  MAX_ARGS_TYPE_STRING_LEN,
   MERKLE_DEPTH,
   DEFAULT_VERIFYING_CONTRACT_V2,
-  buildArgumentsTypeString,
+  FC_PRIMARIES,
 } from "./eip712-types-v2.js";
-import { getMerkleProof, computeFcTypeHashBytes, computeArgsTypeHashBytes, type MerkleProof } from "./merkle-tree-data.js";
+import { getMerkleProof, computeFcTypeHashBytes, type MerkleProof } from "./merkle-tree-data.js";
 import { Capsule } from "@aztec/stdlib/tx";
 import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
@@ -60,19 +59,14 @@ export interface Eip712OracleDataV2_2 {
   hideMsgSender: boolean[];
   isStatic: boolean[];
   // Per-call type/proof data (N entries each)
-  argsTypeStrings: Uint8Array[];
-  argsTypeStringLengths: number[];
   merkleProofs: Fr[][];
   merkleLeafIndices: number[];
   fcTypeHashes: Uint8Array[];
-  argsTypeHashes: Uint8Array[];
-  // Metadata
-  walletName: Uint8Array;
-  walletNameLength: number;
-  walletVersion: Uint8Array;
-  walletVersionLength: number;
-  accountAddress: bigint;
-  chainId: bigint;
+  callHashes: Uint8Array[];
+  // Precomputed hashes
+  entrypointTypeHash: Uint8Array;
+  accountDataHash: Uint8Array;
+  txMetadataHash: Uint8Array;
 }
 
 /** Oracle data for V2 individual authwit */
@@ -84,17 +78,13 @@ export interface Eip712AuthwitOracleDataV2 {
   argsLength: number;
   targetAddress: bigint;
   isPublic: boolean;
-  argsTypeString: Uint8Array;
-  argsTypeStringLength: number;
   merkleProof: Fr[];
   merkleLeafIndex: number;
-  chainId: bigint;
-  verifyingContract: bigint;
   innerHash: bigint;
-  /** Pre-computed FunctionCallAuthorization type hash (Approach 2) */
+  /** Pre-computed FunctionCallAuthorization type hash */
   fcAuthTypeHash: Uint8Array;
-  /** Pre-computed Arguments type hash (Approach 2) */
-  argsTypeHash: Uint8Array;
+  /** Pre-computed authwit message hash (hashStruct of FunctionCallAuthorization) */
+  authwitMessageHash: Uint8Array;
 }
 
 // =============================================================================
@@ -215,7 +205,7 @@ export class Eip712AccountV2 {
       ecdsaSignature,
       proofs,
       accountData,
-      contractAddress.toField().toBigInt(),
+      txMetadata,
     );
 
     const callCount = calls.length;
@@ -250,7 +240,7 @@ export class Eip712AccountV2 {
     ecdsaSignature: Uint8Array,
     merkleProofs: MerkleProof[],
     accountData: AccountData,
-    accountAddressBigInt: bigint,
+    txMetadata: TxMetadata,
   ): Eip712OracleDataV2_2 {
     const callCount = calls.length;
     const functionSignatures: Uint8Array[] = [];
@@ -261,12 +251,9 @@ export class Eip712AccountV2 {
     const isPublic: boolean[] = [];
     const hideMsgSender: boolean[] = [];
     const isStatic: boolean[] = [];
-    const argsTypeStrings: Uint8Array[] = [];
-    const argsTypeStringLengths: number[] = [];
     const merkleProofArrays: Fr[][] = [];
     const merkleLeafIndices: number[] = [];
     const fcTypeHashes: Uint8Array[] = [];
-    const argsTypeHashes: Uint8Array[] = [];
 
     for (let i = 0; i < callCount; i++) {
       const call = calls[i];
@@ -292,32 +279,38 @@ export class Eip712AccountV2 {
       hideMsgSender.push(call.hideMsgSender ?? false);
       isStatic.push(call.isStatic ?? false);
 
-      // Per-call type string (Arguments{N})
-      const typeString = buildArgumentsTypeString(`Arguments${slotNum}`, call.argTypes);
-      const tsBytes = new TextEncoder().encode(typeString);
-      const argsTS = new Uint8Array(MAX_ARGS_TYPE_STRING_LEN);
-      argsTS.set(tsBytes.slice(0, MAX_ARGS_TYPE_STRING_LEN));
-      argsTypeStrings.push(argsTS);
-      argsTypeStringLengths.push(Math.min(tsBytes.length, MAX_ARGS_TYPE_STRING_LEN));
-
       // Per-call Merkle proof
       merkleProofArrays.push(merkleProofs[i].siblingPath);
       merkleLeafIndices.push(merkleProofs[i].leafIndex);
 
-      // Per-call type hashes
+      // Per-call FunctionCall type hash
       fcTypeHashes.push(hexToBytes(computeFcTypeHashBytes(`FunctionCall${slotNum}`, call.argTypes)));
-      argsTypeHashes.push(hexToBytes(computeArgsTypeHashBytes(slotNum, call.argTypes)));
     }
 
-    // Wallet name
-    const walletNameBytes = new TextEncoder().encode(accountData.walletName);
-    const walletName = new Uint8Array(MAX_SIGNATURE_SIZE_V2);
-    walletName.set(walletNameBytes.slice(0, MAX_SIGNATURE_SIZE_V2));
+    // Precomputed hashes
+    const perCallArgTypes = calls.map(c => c.argTypes);
+    const entrypointTypeHash = hexToBytes(Eip712EncoderV2.computeEntrypointTypeHash(perCallArgTypes));
+    const accountDataHash = hexToBytes(Eip712EncoderV2.hashAccountData(accountData));
+    const txMetadataHash = hexToBytes(Eip712EncoderV2.hashTxMetadata(txMetadata));
 
-    // Wallet version
-    const walletVersionBytes = new TextEncoder().encode(accountData.version);
-    const walletVersion = new Uint8Array(32);
-    walletVersion.set(walletVersionBytes.slice(0, 32));
+    const callHashes: Uint8Array[] = [];
+    for (let i = 0; i < callCount; i++) {
+      const call = calls[i];
+      const slotNum = i + 1;
+      const contract = pad(toHex(call.targetAddress), { size: 32 }) as Hex;
+      const callHash = Eip712EncoderV2.hashFunctionCallV2(
+        FC_PRIMARIES[slotNum],
+        `Arguments${slotNum}`,
+        contract,
+        call.functionSignature,
+        call.argTypes,
+        call.args,
+        call.isPublic ?? false,
+        call.hideMsgSender ?? false,
+        call.isStatic ?? false,
+      );
+      callHashes.push(hexToBytes(callHash));
+    }
 
     return {
       ecdsaSignature,
@@ -329,27 +322,22 @@ export class Eip712AccountV2 {
       isPublic,
       hideMsgSender,
       isStatic,
-      argsTypeStrings,
-      argsTypeStringLengths,
       merkleProofs: merkleProofArrays,
       merkleLeafIndices,
       fcTypeHashes,
-      argsTypeHashes,
-      walletName,
-      walletNameLength: Math.min(walletNameBytes.length, MAX_SIGNATURE_SIZE_V2),
-      walletVersion,
-      walletVersionLength: Math.min(walletVersionBytes.length, 32),
-      accountAddress: accountAddressBigInt,
-      chainId: this._chainId,
+      callHashes,
+      entrypointTypeHash,
+      accountDataHash,
+      txMetadataHash,
     };
   }
 
   /**
    * Serialize V2 witness to capsule fields.
    *
-   * Layout: 3 + N*32 (call data) + N*32 (type/proof per call) + 12 (metadata)
-   * Total: 15 + 64*N fields
-   * N=1: 79, N=2: 143, N=3: 207, N=4: 271
+   * Layout: 3 + N*32 (call data) + N*22 (proof per call) + 6 (footer)
+   * Total: 9 + 54*N fields
+   * N=1: 63, N=2: 117, N=3: 171, N=4: 225
    */
   private serializeWitnessV2_2ToCapsule(data: Eip712OracleDataV2_2, callCount: number): Fr[] {
     const fields: Fr[] = [];
@@ -357,7 +345,7 @@ export class Eip712AccountV2 {
     // [0-2]: Signature (64 bytes -> 3 fields: 31+31+2)
     fields.push(...this.packBytes(data.ecdsaSignature, [31, 31, 2]));
 
-    // N calls, each 32 fields
+    // N calls, each 32 fields (UNCHANGED)
     for (let callIdx = 0; callIdx < callCount; callIdx++) {
       // Function signature (128 bytes -> 5 fields: 4×31 + 1×4)
       fields.push(
@@ -387,16 +375,8 @@ export class Eip712AccountV2 {
       fields.push(Fr.ZERO);
     }
 
-    // N type/proof blocks, each 32 fields
+    // N proof blocks, each 22 fields
     for (let callIdx = 0; callIdx < callCount; callIdx++) {
-      // Args type string (256 bytes -> 9 fields: 8×31 + 1×8)
-      fields.push(
-        ...this.packBytes(data.argsTypeStrings[callIdx], [31, 31, 31, 31, 31, 31, 31, 31, 8]),
-      );
-
-      // Args type string length
-      fields.push(new Fr(data.argsTypeStringLengths[callIdx]));
-
       // Merkle proof (MERKLE_DEPTH fields + padding to 17)
       for (let i = 0; i < MERKLE_DEPTH; i++) {
         fields.push(data.merkleProofs[callIdx][i]);
@@ -408,34 +388,17 @@ export class Eip712AccountV2 {
       // Merkle leaf index
       fields.push(new Fr(data.merkleLeafIndices[callIdx]));
 
-      // FunctionCall type hash (32 bytes -> 2 fields: 31+1)
+      // FC type hash (32 bytes -> 2 fields: 31+1)
       fields.push(...this.packBytes(data.fcTypeHashes[callIdx], [31, 1]));
 
-      // Arguments type hash (32 bytes -> 2 fields: 31+1)
-      fields.push(...this.packBytes(data.argsTypeHashes[callIdx], [31, 1]));
+      // Call hash (32 bytes -> 2 fields: 31+1)
+      fields.push(...this.packBytes(data.callHashes[callIdx], [31, 1]));
     }
 
-    // Metadata (12 fields)
-    // wallet_name (128 bytes -> 5 fields)
-    fields.push(...this.packBytes(data.walletName, [31, 31, 31, 31, 4]));
-
-    // wallet_name_length
-    fields.push(new Fr(data.walletNameLength));
-
-    // wallet_version (32 bytes -> 2 fields: 31+1)
-    fields.push(...this.packBytes(data.walletVersion, [31, 1]));
-
-    // wallet_version_length
-    fields.push(new Fr(data.walletVersionLength));
-
-    // account_address
-    fields.push(new Fr(data.accountAddress));
-
-    // chain_id
-    fields.push(new Fr(data.chainId));
-
-    // padding
-    fields.push(Fr.ZERO);
+    // Footer (6 fields)
+    fields.push(...this.packBytes(data.entrypointTypeHash, [31, 1]));
+    fields.push(...this.packBytes(data.accountDataHash, [31, 1]));
+    fields.push(...this.packBytes(data.txMetadataHash, [31, 1]));
 
     return fields;
   }
@@ -501,14 +464,24 @@ export class Eip712AccountV2 {
       functionArgs.push(0n);
     }
 
-    const typeString = buildArgumentsTypeString("Arguments", call.argTypes);
-    const tsBytes = new TextEncoder().encode(typeString);
-    const argsTypeString = new Uint8Array(MAX_ARGS_TYPE_STRING_LEN);
-    argsTypeString.set(tsBytes.slice(0, MAX_ARGS_TYPE_STRING_LEN));
-
-    // Pre-computed type hashes (Approach 2)
+    // Pre-computed type hash
     const fcAuthTypeHash = hexToBytes(computeFcTypeHashBytes("Arguments", call.argTypes));
-    const argsTypeHash = hexToBytes(computeArgsTypeHashBytes(0, call.argTypes));
+
+    // Pre-computed authwit message hash
+    const authwitDomainHash = Eip712EncoderV2.hashAuthwitAppDomain(
+      this._chainId,
+      verifyingContract,
+    );
+    const authwitMessageHash = hexToBytes(
+      Eip712EncoderV2.hashFunctionCallAuthorization(
+        authwitDomainHash,
+        pad(toHex(call.targetAddress), { size: 32 }) as Hex,
+        call.functionSignature,
+        call.argTypes,
+        call.args,
+        call.isPublic ?? false,
+      ),
+    );
 
     return {
       ecdsaSignature,
@@ -518,20 +491,16 @@ export class Eip712AccountV2 {
       argsLength: Math.min(call.args.length, MAX_SERIALIZED_ARGS_V2),
       targetAddress: call.targetAddress,
       isPublic: call.isPublic ?? false,
-      argsTypeString,
-      argsTypeStringLength: Math.min(tsBytes.length, MAX_ARGS_TYPE_STRING_LEN),
       merkleProof: proof.siblingPath,
       merkleLeafIndex: proof.leafIndex,
-      chainId: this._chainId,
-      verifyingContract: BigInt(verifyingContract),
       innerHash,
       fcAuthTypeHash,
-      argsTypeHash,
+      authwitMessageHash,
     };
   }
 
   /**
-   * Serialize authwit witness to capsule fields (67 Fields).
+   * Serialize authwit witness to capsule fields (55 Fields).
    */
   private serializeAuthwitV2ToCapsule(data: Eip712AuthwitOracleDataV2): Fr[] {
     const fields: Fr[] = [];
@@ -559,15 +528,7 @@ export class Eip712AccountV2 {
     // [31]: is_public
     fields.push(new Fr(data.isPublic ? 1 : 0));
 
-    // [32-40]: Args type string (9 fields: 8×31 + 1×8)
-    fields.push(
-      ...this.packBytes(data.argsTypeString, [31, 31, 31, 31, 31, 31, 31, 31, 8]),
-    );
-
-    // [41]: Args type string length
-    fields.push(new Fr(data.argsTypeStringLength));
-
-    // [42-58]: Merkle proof (MERKLE_DEPTH fields + padding to 17)
+    // [32-48]: Merkle proof (MERKLE_DEPTH + padding to 17)
     for (let i = 0; i < MERKLE_DEPTH; i++) {
       fields.push(data.merkleProof[i]);
     }
@@ -575,23 +536,17 @@ export class Eip712AccountV2 {
       fields.push(Fr.ZERO);
     }
 
-    // [59]: Merkle leaf index
+    // [49]: Merkle leaf index
     fields.push(new Fr(data.merkleLeafIndex));
 
-    // [60]: Chain ID
-    fields.push(new Fr(data.chainId));
-
-    // [61]: Verifying contract
-    fields.push(new Fr(data.verifyingContract));
-
-    // [62]: Inner hash
-    fields.push(new Fr(data.innerHash));
-
-    // [63-64]: FunctionCallAuthorization type hash (32 bytes -> 2 fields: 31+1)
+    // [50-51]: fc_auth_type_hash (31+1)
     fields.push(...this.packBytes(data.fcAuthTypeHash, [31, 1]));
 
-    // [65-66]: Arguments type hash (32 bytes -> 2 fields: 31+1)
-    fields.push(...this.packBytes(data.argsTypeHash, [31, 1]));
+    // [52]: inner_hash
+    fields.push(new Fr(data.innerHash));
+
+    // [53-54]: authwit_message_hash (31+1)
+    fields.push(...this.packBytes(data.authwitMessageHash, [31, 1]));
 
     return fields;
   }

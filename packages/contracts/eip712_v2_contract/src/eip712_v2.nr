@@ -292,8 +292,8 @@ impl AppPayload4 {
 }
 
 // =============================================================================
-// V2 Witness Structure: Eip712WitnessV2_1 (1 call, 79 fields)
-// Layout: sig(3) + 1*call_data(32) + 1*type_proof(32) + metadata(12)
+// V2 Witness Structure: Eip712WitnessV2_1 (1 call, 63 fields)
+// Layout: sig(3) + 1*call_data(32) + 1*proof_block(22) + footer(6)
 // =============================================================================
 
 pub struct Eip712WitnessV2_1 {
@@ -307,21 +307,16 @@ pub struct Eip712WitnessV2_1 {
     pub is_public: [bool; 1],
     pub hide_msg_sender: [bool; 1],
     pub is_static: [bool; 1],
-    pub args_type_strings: [[u8; MAX_ARGS_TYPE_STRING_LEN]; 1],
-    pub args_type_string_lengths: [u32; 1],
     pub merkle_proofs: [[Field; MERKLE_DEPTH]; 1],
     pub merkle_leaf_indices: [Field; 1],
     pub fc_type_hashes: [[u8; 32]; 1],
-    pub args_type_hashes: [[u8; 32]; 1],
-    pub wallet_name: [u8; MAX_SIGNATURE_SIZE],
-    pub wallet_name_length: u32,
-    pub wallet_version: [u8; 32],
-    pub wallet_version_length: u32,
-    pub account_address: Field,
-    pub chain_id: Field,
+    pub call_hashes: [[u8; 32]; 1],
+    pub entrypoint_type_hash: [u8; 32],
+    pub account_data_hash: [u8; 32],
+    pub tx_metadata_hash: [u8; 32],
 }
 
-pub global EIP712_WITNESS_V2_1_SERIALIZED_LEN: u32 = 79;
+pub global EIP712_WITNESS_V2_1_SERIALIZED_LEN: u32 = 63;
 
 impl Serialize for Eip712WitnessV2_1 {
     let N: u32 = EIP712_WITNESS_V2_1_SERIALIZED_LEN;
@@ -330,8 +325,8 @@ impl Serialize for Eip712WitnessV2_1 {
         let mut result: [Field; EIP712_WITNESS_V2_1_SERIALIZED_LEN] = [0; EIP712_WITNESS_V2_1_SERIALIZED_LEN];
         serialize_signature(self.signature_r, self.signature_s, &mut result);
         serialize_call_data(0, 3, self.function_signatures, self.signature_lengths, self.function_args, self.args_lengths, self.target_addresses, self.is_public, self.hide_msg_sender, self.is_static, &mut result);
-        serialize_type_proof_data(0, 35, self.args_type_strings, self.args_type_string_lengths, self.merkle_proofs, self.merkle_leaf_indices, self.fc_type_hashes, self.args_type_hashes, &mut result);
-        serialize_metadata(67, self.wallet_name, self.wallet_name_length, self.wallet_version, self.wallet_version_length, self.account_address, self.chain_id, &mut result);
+        serialize_proof_block(0, 35, self.merkle_proofs, self.merkle_leaf_indices, self.fc_type_hashes, self.call_hashes, &mut result);
+        serialize_footer(57, self.entrypoint_type_hash, self.account_data_hash, self.tx_metadata_hash, &mut result);
         result
     }
 
@@ -368,28 +363,24 @@ impl Deserialize for Eip712WitnessV2_1 {
             is_static[call_idx] = fields[base + 30] == 1;
         }
 
-        let mut args_type_strings: [[u8; MAX_ARGS_TYPE_STRING_LEN]; 1] = [[0; MAX_ARGS_TYPE_STRING_LEN]; 1];
-        let mut args_type_string_lengths: [u32; 1] = [0; 1];
         let mut merkle_proofs: [[Field; MERKLE_DEPTH]; 1] = [[0; MERKLE_DEPTH]; 1];
         let mut merkle_leaf_indices: [Field; 1] = [0; 1];
         let mut fc_type_hashes: [[u8; 32]; 1] = [[0; 32]; 1];
-        let mut args_type_hashes: [[u8; 32]; 1] = [[0; 32]; 1];
+        let mut call_hashes: [[u8; 32]; 1] = [[0; 32]; 1];
 
         for call_idx in 0..1 {
-            let tp_base = 35 + call_idx * 32;
-            deserialize_type_proof_block(fields, tp_base, call_idx, &mut args_type_strings, &mut args_type_string_lengths, &mut merkle_proofs, &mut merkle_leaf_indices, &mut fc_type_hashes, &mut args_type_hashes);
+            deserialize_proof_block(fields, 35, call_idx, &mut merkle_proofs, &mut merkle_leaf_indices, &mut fc_type_hashes, &mut call_hashes);
         }
 
-        let (wallet_name, wallet_name_length, wallet_version, wallet_version_length, account_address, chain_id) = deserialize_metadata(fields[67], fields[68], fields[69], fields[70], fields[71], fields[72], fields[73], fields[74], fields[75], fields[76], fields[77], fields[78]);
+        let (entrypoint_type_hash, account_data_hash, tx_metadata_hash) = deserialize_footer(fields[57], fields[58], fields[59], fields[60], fields[61], fields[62]);
 
         Eip712WitnessV2_1 {
             signature_r, signature_s,
             function_signatures, signature_lengths, function_args, args_lengths,
             target_addresses, is_public, hide_msg_sender, is_static,
-            args_type_strings, args_type_string_lengths, merkle_proofs, merkle_leaf_indices,
-            fc_type_hashes, args_type_hashes,
-            wallet_name, wallet_name_length, wallet_version, wallet_version_length,
-            account_address, chain_id,
+            merkle_proofs, merkle_leaf_indices,
+            fc_type_hashes, call_hashes,
+            entrypoint_type_hash, account_data_hash, tx_metadata_hash,
         }
     }
 
@@ -406,8 +397,8 @@ pub unconstrained fn load_eip712_witness_v2_1(
 }
 
 // =============================================================================
-// V2 Witness Structure: Eip712WitnessV2_2 (2 calls, 143 fields)
-// Layout: sig(3) + 2*call_data(32) + 2*type_proof(32) + metadata(12)
+// V2 Witness Structure: Eip712WitnessV2_2 (2 calls, 117 fields)
+// Layout: sig(3) + 2*call_data(32) + 2*proof_block(22) + footer(6)
 // =============================================================================
 
 pub struct Eip712WitnessV2_2 {
@@ -421,21 +412,16 @@ pub struct Eip712WitnessV2_2 {
     pub is_public: [bool; 2],
     pub hide_msg_sender: [bool; 2],
     pub is_static: [bool; 2],
-    pub args_type_strings: [[u8; MAX_ARGS_TYPE_STRING_LEN]; 2],
-    pub args_type_string_lengths: [u32; 2],
     pub merkle_proofs: [[Field; MERKLE_DEPTH]; 2],
     pub merkle_leaf_indices: [Field; 2],
     pub fc_type_hashes: [[u8; 32]; 2],
-    pub args_type_hashes: [[u8; 32]; 2],
-    pub wallet_name: [u8; MAX_SIGNATURE_SIZE],
-    pub wallet_name_length: u32,
-    pub wallet_version: [u8; 32],
-    pub wallet_version_length: u32,
-    pub account_address: Field,
-    pub chain_id: Field,
+    pub call_hashes: [[u8; 32]; 2],
+    pub entrypoint_type_hash: [u8; 32],
+    pub account_data_hash: [u8; 32],
+    pub tx_metadata_hash: [u8; 32],
 }
 
-pub global EIP712_WITNESS_V2_2_SERIALIZED_LEN: u32 = 143;
+pub global EIP712_WITNESS_V2_2_SERIALIZED_LEN: u32 = 117;
 
 impl Serialize for Eip712WitnessV2_2 {
     let N: u32 = EIP712_WITNESS_V2_2_SERIALIZED_LEN;
@@ -445,9 +431,11 @@ impl Serialize for Eip712WitnessV2_2 {
         serialize_signature(self.signature_r, self.signature_s, &mut result);
         for call_idx in 0..2 {
             serialize_call_data(call_idx, 3, self.function_signatures, self.signature_lengths, self.function_args, self.args_lengths, self.target_addresses, self.is_public, self.hide_msg_sender, self.is_static, &mut result);
-            serialize_type_proof_data(call_idx, 67, self.args_type_strings, self.args_type_string_lengths, self.merkle_proofs, self.merkle_leaf_indices, self.fc_type_hashes, self.args_type_hashes, &mut result);
         }
-        serialize_metadata(131, self.wallet_name, self.wallet_name_length, self.wallet_version, self.wallet_version_length, self.account_address, self.chain_id, &mut result);
+        for call_idx in 0..2 {
+            serialize_proof_block(call_idx, 67, self.merkle_proofs, self.merkle_leaf_indices, self.fc_type_hashes, self.call_hashes, &mut result);
+        }
+        serialize_footer(111, self.entrypoint_type_hash, self.account_data_hash, self.tx_metadata_hash, &mut result);
         result
     }
 
@@ -484,28 +472,24 @@ impl Deserialize for Eip712WitnessV2_2 {
             is_static[call_idx] = fields[base + 30] == 1;
         }
 
-        let mut args_type_strings: [[u8; MAX_ARGS_TYPE_STRING_LEN]; 2] = [[0; MAX_ARGS_TYPE_STRING_LEN]; 2];
-        let mut args_type_string_lengths: [u32; 2] = [0; 2];
         let mut merkle_proofs: [[Field; MERKLE_DEPTH]; 2] = [[0; MERKLE_DEPTH]; 2];
         let mut merkle_leaf_indices: [Field; 2] = [0; 2];
         let mut fc_type_hashes: [[u8; 32]; 2] = [[0; 32]; 2];
-        let mut args_type_hashes: [[u8; 32]; 2] = [[0; 32]; 2];
+        let mut call_hashes: [[u8; 32]; 2] = [[0; 32]; 2];
 
         for call_idx in 0..2 {
-            let tp_base = 67 + call_idx * 32;
-            deserialize_type_proof_block(fields, tp_base, call_idx, &mut args_type_strings, &mut args_type_string_lengths, &mut merkle_proofs, &mut merkle_leaf_indices, &mut fc_type_hashes, &mut args_type_hashes);
+            deserialize_proof_block(fields, 67, call_idx, &mut merkle_proofs, &mut merkle_leaf_indices, &mut fc_type_hashes, &mut call_hashes);
         }
 
-        let (wallet_name, wallet_name_length, wallet_version, wallet_version_length, account_address, chain_id) = deserialize_metadata(fields[131], fields[132], fields[133], fields[134], fields[135], fields[136], fields[137], fields[138], fields[139], fields[140], fields[141], fields[142]);
+        let (entrypoint_type_hash, account_data_hash, tx_metadata_hash) = deserialize_footer(fields[111], fields[112], fields[113], fields[114], fields[115], fields[116]);
 
         Eip712WitnessV2_2 {
             signature_r, signature_s,
             function_signatures, signature_lengths, function_args, args_lengths,
             target_addresses, is_public, hide_msg_sender, is_static,
-            args_type_strings, args_type_string_lengths, merkle_proofs, merkle_leaf_indices,
-            fc_type_hashes, args_type_hashes,
-            wallet_name, wallet_name_length, wallet_version, wallet_version_length,
-            account_address, chain_id,
+            merkle_proofs, merkle_leaf_indices,
+            fc_type_hashes, call_hashes,
+            entrypoint_type_hash, account_data_hash, tx_metadata_hash,
         }
     }
 
@@ -522,8 +506,8 @@ pub unconstrained fn load_eip712_witness_v2_2(
 }
 
 // =============================================================================
-// V2 Witness Structure: Eip712WitnessV2_3 (3 calls, 207 fields)
-// Layout: sig(3) + 3*call_data(32) + 3*type_proof(32) + metadata(12)
+// V2 Witness Structure: Eip712WitnessV2_3 (3 calls, 171 fields)
+// Layout: sig(3) + 3*call_data(32) + 3*proof_block(22) + footer(6)
 // =============================================================================
 
 pub struct Eip712WitnessV2_3 {
@@ -537,21 +521,16 @@ pub struct Eip712WitnessV2_3 {
     pub is_public: [bool; 3],
     pub hide_msg_sender: [bool; 3],
     pub is_static: [bool; 3],
-    pub args_type_strings: [[u8; MAX_ARGS_TYPE_STRING_LEN]; 3],
-    pub args_type_string_lengths: [u32; 3],
     pub merkle_proofs: [[Field; MERKLE_DEPTH]; 3],
     pub merkle_leaf_indices: [Field; 3],
     pub fc_type_hashes: [[u8; 32]; 3],
-    pub args_type_hashes: [[u8; 32]; 3],
-    pub wallet_name: [u8; MAX_SIGNATURE_SIZE],
-    pub wallet_name_length: u32,
-    pub wallet_version: [u8; 32],
-    pub wallet_version_length: u32,
-    pub account_address: Field,
-    pub chain_id: Field,
+    pub call_hashes: [[u8; 32]; 3],
+    pub entrypoint_type_hash: [u8; 32],
+    pub account_data_hash: [u8; 32],
+    pub tx_metadata_hash: [u8; 32],
 }
 
-pub global EIP712_WITNESS_V2_3_SERIALIZED_LEN: u32 = 207;
+pub global EIP712_WITNESS_V2_3_SERIALIZED_LEN: u32 = 171;
 
 impl Serialize for Eip712WitnessV2_3 {
     let N: u32 = EIP712_WITNESS_V2_3_SERIALIZED_LEN;
@@ -561,9 +540,11 @@ impl Serialize for Eip712WitnessV2_3 {
         serialize_signature(self.signature_r, self.signature_s, &mut result);
         for call_idx in 0..3 {
             serialize_call_data(call_idx, 3, self.function_signatures, self.signature_lengths, self.function_args, self.args_lengths, self.target_addresses, self.is_public, self.hide_msg_sender, self.is_static, &mut result);
-            serialize_type_proof_data(call_idx, 99, self.args_type_strings, self.args_type_string_lengths, self.merkle_proofs, self.merkle_leaf_indices, self.fc_type_hashes, self.args_type_hashes, &mut result);
         }
-        serialize_metadata(195, self.wallet_name, self.wallet_name_length, self.wallet_version, self.wallet_version_length, self.account_address, self.chain_id, &mut result);
+        for call_idx in 0..3 {
+            serialize_proof_block(call_idx, 99, self.merkle_proofs, self.merkle_leaf_indices, self.fc_type_hashes, self.call_hashes, &mut result);
+        }
+        serialize_footer(165, self.entrypoint_type_hash, self.account_data_hash, self.tx_metadata_hash, &mut result);
         result
     }
 
@@ -600,28 +581,24 @@ impl Deserialize for Eip712WitnessV2_3 {
             is_static[call_idx] = fields[base + 30] == 1;
         }
 
-        let mut args_type_strings: [[u8; MAX_ARGS_TYPE_STRING_LEN]; 3] = [[0; MAX_ARGS_TYPE_STRING_LEN]; 3];
-        let mut args_type_string_lengths: [u32; 3] = [0; 3];
         let mut merkle_proofs: [[Field; MERKLE_DEPTH]; 3] = [[0; MERKLE_DEPTH]; 3];
         let mut merkle_leaf_indices: [Field; 3] = [0; 3];
         let mut fc_type_hashes: [[u8; 32]; 3] = [[0; 32]; 3];
-        let mut args_type_hashes: [[u8; 32]; 3] = [[0; 32]; 3];
+        let mut call_hashes: [[u8; 32]; 3] = [[0; 32]; 3];
 
         for call_idx in 0..3 {
-            let tp_base = 99 + call_idx * 32;
-            deserialize_type_proof_block(fields, tp_base, call_idx, &mut args_type_strings, &mut args_type_string_lengths, &mut merkle_proofs, &mut merkle_leaf_indices, &mut fc_type_hashes, &mut args_type_hashes);
+            deserialize_proof_block(fields, 99, call_idx, &mut merkle_proofs, &mut merkle_leaf_indices, &mut fc_type_hashes, &mut call_hashes);
         }
 
-        let (wallet_name, wallet_name_length, wallet_version, wallet_version_length, account_address, chain_id) = deserialize_metadata(fields[195], fields[196], fields[197], fields[198], fields[199], fields[200], fields[201], fields[202], fields[203], fields[204], fields[205], fields[206]);
+        let (entrypoint_type_hash, account_data_hash, tx_metadata_hash) = deserialize_footer(fields[165], fields[166], fields[167], fields[168], fields[169], fields[170]);
 
         Eip712WitnessV2_3 {
             signature_r, signature_s,
             function_signatures, signature_lengths, function_args, args_lengths,
             target_addresses, is_public, hide_msg_sender, is_static,
-            args_type_strings, args_type_string_lengths, merkle_proofs, merkle_leaf_indices,
-            fc_type_hashes, args_type_hashes,
-            wallet_name, wallet_name_length, wallet_version, wallet_version_length,
-            account_address, chain_id,
+            merkle_proofs, merkle_leaf_indices,
+            fc_type_hashes, call_hashes,
+            entrypoint_type_hash, account_data_hash, tx_metadata_hash,
         }
     }
 
@@ -638,8 +615,8 @@ pub unconstrained fn load_eip712_witness_v2_3(
 }
 
 // =============================================================================
-// V2 Witness Structure: Eip712WitnessV2_4 (4 calls, 271 fields)
-// Layout: sig(3) + 4*call_data(32) + 4*type_proof(32) + metadata(12)
+// V2 Witness Structure: Eip712WitnessV2_4 (4 calls, 225 fields)
+// Layout: sig(3) + 4*call_data(32) + 4*proof_block(22) + footer(6)
 // =============================================================================
 
 pub struct Eip712WitnessV2_4 {
@@ -653,21 +630,16 @@ pub struct Eip712WitnessV2_4 {
     pub is_public: [bool; 4],
     pub hide_msg_sender: [bool; 4],
     pub is_static: [bool; 4],
-    pub args_type_strings: [[u8; MAX_ARGS_TYPE_STRING_LEN]; 4],
-    pub args_type_string_lengths: [u32; 4],
     pub merkle_proofs: [[Field; MERKLE_DEPTH]; 4],
     pub merkle_leaf_indices: [Field; 4],
     pub fc_type_hashes: [[u8; 32]; 4],
-    pub args_type_hashes: [[u8; 32]; 4],
-    pub wallet_name: [u8; MAX_SIGNATURE_SIZE],
-    pub wallet_name_length: u32,
-    pub wallet_version: [u8; 32],
-    pub wallet_version_length: u32,
-    pub account_address: Field,
-    pub chain_id: Field,
+    pub call_hashes: [[u8; 32]; 4],
+    pub entrypoint_type_hash: [u8; 32],
+    pub account_data_hash: [u8; 32],
+    pub tx_metadata_hash: [u8; 32],
 }
 
-pub global EIP712_WITNESS_V2_4_SERIALIZED_LEN: u32 = 271;
+pub global EIP712_WITNESS_V2_4_SERIALIZED_LEN: u32 = 225;
 
 impl Serialize for Eip712WitnessV2_4 {
     let N: u32 = EIP712_WITNESS_V2_4_SERIALIZED_LEN;
@@ -677,9 +649,11 @@ impl Serialize for Eip712WitnessV2_4 {
         serialize_signature(self.signature_r, self.signature_s, &mut result);
         for call_idx in 0..4 {
             serialize_call_data(call_idx, 3, self.function_signatures, self.signature_lengths, self.function_args, self.args_lengths, self.target_addresses, self.is_public, self.hide_msg_sender, self.is_static, &mut result);
-            serialize_type_proof_data(call_idx, 131, self.args_type_strings, self.args_type_string_lengths, self.merkle_proofs, self.merkle_leaf_indices, self.fc_type_hashes, self.args_type_hashes, &mut result);
         }
-        serialize_metadata(259, self.wallet_name, self.wallet_name_length, self.wallet_version, self.wallet_version_length, self.account_address, self.chain_id, &mut result);
+        for call_idx in 0..4 {
+            serialize_proof_block(call_idx, 131, self.merkle_proofs, self.merkle_leaf_indices, self.fc_type_hashes, self.call_hashes, &mut result);
+        }
+        serialize_footer(219, self.entrypoint_type_hash, self.account_data_hash, self.tx_metadata_hash, &mut result);
         result
     }
 
@@ -716,28 +690,24 @@ impl Deserialize for Eip712WitnessV2_4 {
             is_static[call_idx] = fields[base + 30] == 1;
         }
 
-        let mut args_type_strings: [[u8; MAX_ARGS_TYPE_STRING_LEN]; 4] = [[0; MAX_ARGS_TYPE_STRING_LEN]; 4];
-        let mut args_type_string_lengths: [u32; 4] = [0; 4];
         let mut merkle_proofs: [[Field; MERKLE_DEPTH]; 4] = [[0; MERKLE_DEPTH]; 4];
         let mut merkle_leaf_indices: [Field; 4] = [0; 4];
         let mut fc_type_hashes: [[u8; 32]; 4] = [[0; 32]; 4];
-        let mut args_type_hashes: [[u8; 32]; 4] = [[0; 32]; 4];
+        let mut call_hashes: [[u8; 32]; 4] = [[0; 32]; 4];
 
         for call_idx in 0..4 {
-            let tp_base = 131 + call_idx * 32;
-            deserialize_type_proof_block(fields, tp_base, call_idx, &mut args_type_strings, &mut args_type_string_lengths, &mut merkle_proofs, &mut merkle_leaf_indices, &mut fc_type_hashes, &mut args_type_hashes);
+            deserialize_proof_block(fields, 131, call_idx, &mut merkle_proofs, &mut merkle_leaf_indices, &mut fc_type_hashes, &mut call_hashes);
         }
 
-        let (wallet_name, wallet_name_length, wallet_version, wallet_version_length, account_address, chain_id) = deserialize_metadata(fields[259], fields[260], fields[261], fields[262], fields[263], fields[264], fields[265], fields[266], fields[267], fields[268], fields[269], fields[270]);
+        let (entrypoint_type_hash, account_data_hash, tx_metadata_hash) = deserialize_footer(fields[219], fields[220], fields[221], fields[222], fields[223], fields[224]);
 
         Eip712WitnessV2_4 {
             signature_r, signature_s,
             function_signatures, signature_lengths, function_args, args_lengths,
             target_addresses, is_public, hide_msg_sender, is_static,
-            args_type_strings, args_type_string_lengths, merkle_proofs, merkle_leaf_indices,
-            fc_type_hashes, args_type_hashes,
-            wallet_name, wallet_name_length, wallet_version, wallet_version_length,
-            account_address, chain_id,
+            merkle_proofs, merkle_leaf_indices,
+            fc_type_hashes, call_hashes,
+            entrypoint_type_hash, account_data_hash, tx_metadata_hash,
         }
     }
 
@@ -761,33 +731,20 @@ pub unconstrained fn load_eip712_witness_v2_4(
 pub struct Eip712AuthwitWitnessV2 {
     pub signature_r: [u8; 32],
     pub signature_s: [u8; 32],
-
     pub function_signature: [u8; MAX_SIGNATURE_SIZE],
     pub signature_length: u32,
     pub function_args: [Field; MAX_SERIALIZED_ARGS],
     pub args_length: u32,
     pub target_address: Field,
     pub is_public: bool,
-
-    // Variable args type info
-    pub args_type_string: [u8; MAX_ARGS_TYPE_STRING_LEN],
-    pub args_type_string_length: u32,
-
-    // Merkle proof
     pub merkle_proof: [Field; MERKLE_DEPTH],
     pub merkle_leaf_index: Field,
-
-    // Authwit-specific domain
-    pub chain_id: Field,
-    pub verifying_contract: Field,
-    pub inner_hash: Field,
-
-    // Pre-computed type hashes from oracle
     pub fc_auth_type_hash: [u8; 32],
-    pub args_type_hash: [u8; 32],
+    pub inner_hash: Field,
+    pub authwit_message_hash: [u8; 32],
 }
 
-pub global EIP712_AUTHWIT_V2_SERIALIZED_LEN: u32 = 67;
+pub global EIP712_AUTHWIT_V2_SERIALIZED_LEN: u32 = 55;
 
 impl Serialize for Eip712AuthwitWitnessV2 {
     let N: u32 = EIP712_AUTHWIT_V2_SERIALIZED_LEN;
@@ -836,47 +793,24 @@ impl Serialize for Eip712AuthwitWitnessV2 {
         // [31]: is_public
         result[31] = self.is_public as Field;
 
-        // [32-40]: Args type string (9 fields: 8x31 + 1x8)
-        for i in 0..8 {
-            let mut chunk: [u8; 31] = [0; 31];
-            for j in 0..31 {
-                chunk[j] = self.args_type_string[i * 31 + j];
-            }
-            result[32 + i] = pack_bytes_to_field(chunk);
-        }
-        let mut last_ts: Field = 0;
-        for i in 0..8 {
-            last_ts = last_ts * 256 + (self.args_type_string[248 + i] as Field);
-        }
-        result[40] = last_ts;
-
-        // [41]: Args type string length
-        result[41] = self.args_type_string_length as Field;
-
-        // [42-58]: Merkle proof
+        // [32-48]: Merkle proof (17 fields, padded from MERKLE_DEPTH=9)
         for i in 0..MERKLE_DEPTH {
-            result[42 + i] = self.merkle_proof[i];
+            result[32 + i] = self.merkle_proof[i];
         }
 
-        // [59]: Merkle leaf index
-        result[59] = self.merkle_leaf_index;
+        // [49]: Merkle leaf index
+        result[49] = self.merkle_leaf_index;
 
-        // [60]: Chain ID
-        result[60] = self.chain_id;
+        // [50-51]: fc_auth_type_hash (31+1)
+        result[50] = pack_bytes_31(self.fc_auth_type_hash, 0);
+        result[51] = self.fc_auth_type_hash[31] as Field;
 
-        // [61]: Verifying contract
-        result[61] = self.verifying_contract;
+        // [52]: Inner hash
+        result[52] = self.inner_hash;
 
-        // [62]: Inner hash
-        result[62] = self.inner_hash;
-
-        // [63-64]: fc_auth_type_hash
-        result[63] = pack_bytes_31(self.fc_auth_type_hash, 0);
-        result[64] = self.fc_auth_type_hash[31] as Field;
-
-        // [65-66]: args_type_hash
-        result[65] = pack_bytes_31(self.args_type_hash, 0);
-        result[66] = self.args_type_hash[31] as Field;
+        // [53-54]: authwit_message_hash (31+1)
+        result[53] = pack_bytes_31(self.authwit_message_hash, 0);
+        result[54] = self.authwit_message_hash[31] as Field;
 
         result
     }
@@ -910,43 +844,30 @@ impl Deserialize for Eip712AuthwitWitnessV2 {
         let target_address = fields[30];
         let is_public = fields[31] == 1;
 
-        // Args type string
-        let mut args_type_string: [u8; MAX_ARGS_TYPE_STRING_LEN] = [0; MAX_ARGS_TYPE_STRING_LEN];
-        for i in 0..8 {
-            let bytes: [u8; 31] = fields[32 + i].to_be_bytes();
-            for j in 0..31 {
-                args_type_string[i * 31 + j] = bytes[j];
-            }
-        }
-        let last_ts: [u8; 8] = fields[40].to_be_bytes();
-        for i in 0..8 {
-            args_type_string[248 + i] = last_ts[i];
-        }
-        let args_type_string_length = fields[41] as u32;
-
+        // Merkle proof (17 fields, padded from MERKLE_DEPTH=9)
         let mut merkle_proof: [Field; MERKLE_DEPTH] = [0; MERKLE_DEPTH];
         for i in 0..MERKLE_DEPTH {
-            merkle_proof[i] = fields[42 + i];
+            merkle_proof[i] = fields[32 + i];
         }
-        let merkle_leaf_index = fields[59];
+        let merkle_leaf_index = fields[49];
 
-        let chain_id = fields[60];
-        let verifying_contract = fields[61];
-        let inner_hash = fields[62];
-
-        let fc_auth_th: [u8; 31] = fields[63].to_be_bytes();
+        // fc_auth_type_hash (31+1)
+        let fc_auth_th: [u8; 31] = fields[50].to_be_bytes();
         let mut fc_auth_type_hash: [u8; 32] = [0; 32];
         for i in 0..31 {
             fc_auth_type_hash[i] = fc_auth_th[i];
         }
-        fc_auth_type_hash[31] = fields[64].to_be_bytes::<32>()[31];
+        fc_auth_type_hash[31] = fields[51].to_be_bytes::<32>()[31];
 
-        let args_th: [u8; 31] = fields[65].to_be_bytes();
-        let mut args_type_hash: [u8; 32] = [0; 32];
+        let inner_hash = fields[52];
+
+        // authwit_message_hash (31+1)
+        let amh_bytes: [u8; 31] = fields[53].to_be_bytes();
+        let mut authwit_message_hash: [u8; 32] = [0; 32];
         for i in 0..31 {
-            args_type_hash[i] = args_th[i];
+            authwit_message_hash[i] = amh_bytes[i];
         }
-        args_type_hash[31] = fields[66].to_be_bytes::<32>()[31];
+        authwit_message_hash[31] = fields[54].to_be_bytes::<32>()[31];
 
         Eip712AuthwitWitnessV2 {
             signature_r,
@@ -957,15 +878,11 @@ impl Deserialize for Eip712AuthwitWitnessV2 {
             args_length,
             target_address,
             is_public,
-            args_type_string,
-            args_type_string_length,
             merkle_proof,
             merkle_leaf_index,
-            chain_id,
-            verifying_contract,
-            inner_hash,
             fc_auth_type_hash,
-            args_type_hash,
+            inner_hash,
+            authwit_message_hash,
         }
     }
 
@@ -1098,148 +1015,98 @@ fn serialize_call_data<let L: u32, let NC: u32>(
     result[base + 31] = 0;
 }
 
-/// Serialize one type/proof block (32 fields) at tp_base + call_idx*32
-fn serialize_type_proof_data<let L: u32, let NC: u32>(
+/// Serialize one proof block (22 fields) at pb_base + call_idx*22
+fn serialize_proof_block<let L: u32, let NC: u32>(
     call_idx: u32,
-    tp_base: u32,
-    ats: [[u8; MAX_ARGS_TYPE_STRING_LEN]; NC],
-    ats_lens: [u32; NC],
+    pb_base: u32,
     mproofs: [[Field; MERKLE_DEPTH]; NC],
     mleaf_idxs: [Field; NC],
     fc_ths: [[u8; 32]; NC],
-    args_ths: [[u8; 32]; NC],
+    call_hs: [[u8; 32]; NC],
     result: &mut [Field; L],
 ) {
-    let base = tp_base + call_idx * 32;
-    // Args type string (256 bytes = 9 fields: 8*31 + 1*8)
-    for i in 0..8 {
-        let mut chunk: [u8; 31] = [0; 31];
-        for j in 0..31 {
-            chunk[j] = ats[call_idx][i * 31 + j];
-        }
-        result[base + i] = pack_bytes_to_field(chunk);
-    }
-    let mut last_ts: Field = 0;
-    for i in 0..8 {
-        last_ts = last_ts * 256 + (ats[call_idx][248 + i] as Field);
-    }
-    result[base + 8] = last_ts;
-    result[base + 9] = ats_lens[call_idx] as Field;
-    // Merkle proof (17 fields)
+    let base = pb_base + call_idx * 22;
+    // Merkle proof (17 fields, padded from MERKLE_DEPTH=9)
     for i in 0..MERKLE_DEPTH {
-        result[base + 10 + i] = mproofs[call_idx][i];
+        result[base + i] = mproofs[call_idx][i];
     }
-    result[base + 27] = mleaf_idxs[call_idx];
+    // Zero padding from MERKLE_DEPTH to 17 is already 0 from initialization
+    result[base + 17] = mleaf_idxs[call_idx];
     // FC type hash (31+1)
-    result[base + 28] = pack_bytes_31(fc_ths[call_idx], 0);
-    result[base + 29] = fc_ths[call_idx][31] as Field;
-    // Args type hash (31+1)
-    result[base + 30] = pack_bytes_31(args_ths[call_idx], 0);
-    result[base + 31] = args_ths[call_idx][31] as Field;
+    result[base + 18] = pack_bytes_31(fc_ths[call_idx], 0);
+    result[base + 19] = fc_ths[call_idx][31] as Field;
+    // Call hash (31+1)
+    result[base + 20] = pack_bytes_31(call_hs[call_idx], 0);
+    result[base + 21] = call_hs[call_idx][31] as Field;
 }
 
-/// Serialize metadata block (12 fields) at meta_base
-fn serialize_metadata<let L: u32>(
-    meta_base: u32,
-    wallet_name: [u8; MAX_SIGNATURE_SIZE],
-    wallet_name_length: u32,
-    wallet_version: [u8; 32],
-    wallet_version_length: u32,
-    account_address: Field,
-    chain_id: Field,
+/// Serialize footer block (6 fields) at footer_base
+fn serialize_footer<let L: u32>(
+    footer_base: u32,
+    entrypoint_type_hash: [u8; 32],
+    account_data_hash: [u8; 32],
+    tx_metadata_hash: [u8; 32],
     result: &mut [Field; L],
 ) {
-    for i in 0..4 {
-        let mut chunk: [u8; 31] = [0; 31];
-        for j in 0..31 {
-            chunk[j] = wallet_name[i * 31 + j];
-        }
-        result[meta_base + i] = pack_bytes_to_field(chunk);
-    }
-    let mut wn_last: Field = 0;
-    for i in 0..4 {
-        wn_last = wn_last * 256 + (wallet_name[124 + i] as Field);
-    }
-    result[meta_base + 4] = wn_last;
-    result[meta_base + 5] = wallet_name_length as Field;
-    result[meta_base + 6] = pack_bytes_31(wallet_version, 0);
-    result[meta_base + 7] = wallet_version[31] as Field;
-    result[meta_base + 8] = wallet_version_length as Field;
-    result[meta_base + 9] = account_address;
-    result[meta_base + 10] = chain_id;
-    result[meta_base + 11] = 0;
+    result[footer_base] = pack_bytes_31(entrypoint_type_hash, 0);
+    result[footer_base + 1] = entrypoint_type_hash[31] as Field;
+    result[footer_base + 2] = pack_bytes_31(account_data_hash, 0);
+    result[footer_base + 3] = account_data_hash[31] as Field;
+    result[footer_base + 4] = pack_bytes_31(tx_metadata_hash, 0);
+    result[footer_base + 5] = tx_metadata_hash[31] as Field;
 }
 
-/// Deserialize metadata from 12 consecutive fields
-fn deserialize_metadata(
+/// Deserialize footer from 6 consecutive fields
+fn deserialize_footer(
     f0: Field, f1: Field, f2: Field, f3: Field, f4: Field, f5: Field,
-    f6: Field, f7: Field, f8: Field, f9: Field, f10: Field, _f11: Field,
-) -> ([u8; MAX_SIGNATURE_SIZE], u32, [u8; 32], u32, Field, Field) {
-    let mut wallet_name: [u8; MAX_SIGNATURE_SIZE] = [0; MAX_SIGNATURE_SIZE];
-    let wn = unpack_func_sig_from_fields([f0, f1, f2, f3, f4]);
-    for i in 0..MAX_SIGNATURE_SIZE {
-        wallet_name[i] = wn[i];
-    }
-    let wallet_name_length = f5 as u32;
+) -> ([u8; 32], [u8; 32], [u8; 32]) {
+    let mut entrypoint_type_hash: [u8; 32] = [0; 32];
+    let eth_bytes: [u8; 31] = f0.to_be_bytes();
+    for i in 0..31 { entrypoint_type_hash[i] = eth_bytes[i]; }
+    entrypoint_type_hash[31] = f1.to_be_bytes::<32>()[31];
 
-    let mut wallet_version: [u8; 32] = [0; 32];
-    let wv_bytes: [u8; 31] = f6.to_be_bytes();
-    for i in 0..31 {
-        wallet_version[i] = wv_bytes[i];
-    }
-    wallet_version[31] = f7.to_be_bytes::<32>()[31];
-    let wallet_version_length = f8 as u32;
+    let mut account_data_hash: [u8; 32] = [0; 32];
+    let adh_bytes: [u8; 31] = f2.to_be_bytes();
+    for i in 0..31 { account_data_hash[i] = adh_bytes[i]; }
+    account_data_hash[31] = f3.to_be_bytes::<32>()[31];
 
-    let account_address = f9;
-    let chain_id = f10;
+    let mut tx_metadata_hash: [u8; 32] = [0; 32];
+    let tmh_bytes: [u8; 31] = f4.to_be_bytes();
+    for i in 0..31 { tx_metadata_hash[i] = tmh_bytes[i]; }
+    tx_metadata_hash[31] = f5.to_be_bytes::<32>()[31];
 
-    (wallet_name, wallet_name_length, wallet_version, wallet_version_length, account_address, chain_id)
+    (entrypoint_type_hash, account_data_hash, tx_metadata_hash)
 }
 
-/// Deserialize one type/proof block from fields at tp_base into mutable arrays at call_idx
-fn deserialize_type_proof_block<let L: u32, let NC: u32>(
+/// Deserialize one proof block from fields at pb_base into mutable arrays at call_idx
+fn deserialize_proof_block<let L: u32, let NC: u32>(
     fields: [Field; L],
-    tp_base: u32,
+    pb_base: u32,
     call_idx: u32,
-    args_type_strings: &mut [[u8; MAX_ARGS_TYPE_STRING_LEN]; NC],
-    args_type_string_lengths: &mut [u32; NC],
     merkle_proofs: &mut [[Field; MERKLE_DEPTH]; NC],
     merkle_leaf_indices: &mut [Field; NC],
     fc_type_hashes: &mut [[u8; 32]; NC],
-    args_type_hashes: &mut [[u8; 32]; NC],
+    call_hashes: &mut [[u8; 32]; NC],
 ) {
-    // Args type string (9 fields: 8*31 + 1*8)
-    for i in 0..8 {
-        let bytes: [u8; 31] = fields[tp_base + i].to_be_bytes();
-        for j in 0..31 {
-            args_type_strings[call_idx][i * 31 + j] = bytes[j];
-        }
-    }
-    let last_ts: [u8; 8] = fields[tp_base + 8].to_be_bytes();
-    for i in 0..8 {
-        args_type_strings[call_idx][248 + i] = last_ts[i];
-    }
-    args_type_string_lengths[call_idx] = fields[tp_base + 9] as u32;
-
-    // Merkle proof
+    let base = pb_base + call_idx * 22;
     for i in 0..MERKLE_DEPTH {
-        merkle_proofs[call_idx][i] = fields[tp_base + 10 + i];
+        merkle_proofs[call_idx][i] = fields[base + i];
     }
-    merkle_leaf_indices[call_idx] = fields[tp_base + 27];
+    merkle_leaf_indices[call_idx] = fields[base + 17];
 
     // FC type hash (31+1)
-    let fc_th_bytes: [u8; 31] = fields[tp_base + 28].to_be_bytes();
+    let fc_th_bytes: [u8; 31] = fields[base + 18].to_be_bytes();
     for j in 0..31 {
         fc_type_hashes[call_idx][j] = fc_th_bytes[j];
     }
-    fc_type_hashes[call_idx][31] = fields[tp_base + 29].to_be_bytes::<32>()[31];
+    fc_type_hashes[call_idx][31] = fields[base + 19].to_be_bytes::<32>()[31];
 
-    // Args type hash (31+1)
-    let args_th_bytes: [u8; 31] = fields[tp_base + 30].to_be_bytes();
+    // Call hash (31+1)
+    let ch_bytes: [u8; 31] = fields[base + 20].to_be_bytes();
     for j in 0..31 {
-        args_type_hashes[call_idx][j] = args_th_bytes[j];
+        call_hashes[call_idx][j] = ch_bytes[j];
     }
-    args_type_hashes[call_idx][31] = fields[tp_base + 31].to_be_bytes::<32>()[31];
+    call_hashes[call_idx][31] = fields[base + 21].to_be_bytes::<32>()[31];
 }
 
 // =============================================================================

@@ -12,11 +12,16 @@ import { test, expect } from "./fixtures/walletless";
 import {
   selectAccountVersion,
   connectWallet,
-  deployCounterViaUI,
   TIMEOUTS,
 } from "./utils/test-helpers";
 
 test.describe("EIP-712 V2 E2E", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      try { localStorage.removeItem("aztec_counter_contract_address"); } catch {}
+    });
+  });
+
   test("version toggle should be interactive before connecting", async ({
     page,
   }) => {
@@ -71,6 +76,7 @@ test.describe("EIP-712 V2 E2E", () => {
 
   test("version toggle should be disabled while connected", async ({
     page,
+    walletless,
   }) => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
@@ -86,67 +92,62 @@ test.describe("EIP-712 V2 E2E", () => {
     await expect(v2Btn).not.toBeVisible();
   });
 
-  test("V2 should read counter value", async ({ page }) => {
-    await page.goto("/");
-    await page.waitForLoadState("networkidle");
-
-    await selectAccountVersion(page, "v2");
-    await connectWallet(page);
-    await deployCounterViaUI(page);
-
-    // Click Read and wait for result
-    const readBtn = page.getByRole("button", { name: /^Read$/i });
-    await readBtn.click();
-
-    // Counter value should appear as a number (replacing the em dash placeholder)
-    const counterValue = page.locator("div").filter({ hasText: /^\d+$/ });
-    await expect(counterValue).toBeVisible({ timeout: TIMEOUTS.DEFAULT });
-  });
-
-  test("V2 read → increment → read should show updated counter", async ({
+  test("V2 full flow: connect, read(0), increment, read(1)", async ({
     page,
+    walletless,
   }) => {
+    // Forward key browser logs for diagnostics
+    page.on("console", (msg) => {
+      const text = msg.text();
+      if (text.includes("[wallet]") || text.includes("[SigningDelegate") || msg.type() === "error") {
+        console.log(`  [browser:${msg.type()}] ${text}`);
+      }
+    });
+
     await page.goto("/");
     await page.waitForLoadState("networkidle");
 
+    // 1. Select V2 and connect
     await selectAccountVersion(page, "v2");
     await connectWallet(page);
-    await deployCounterViaUI(page);
+    await expect(page.getByText("EIP-712 V2")).toBeVisible({ timeout: TIMEOUTS.LONG });
 
-    // Read initial counter value
+    // Wait for account contract to be deployed (runs async after connect)
+    await page.waitForEvent("console", {
+      predicate: (msg) => msg.text().includes("[wallet] Account"),
+      timeout: TIMEOUTS.TX,
+    });
+
+    // 2. Wait for pre-deployed counter to be registered with PXE
     const readBtn = page.getByRole("button", { name: /^Read$/i });
+    await expect(readBtn).toBeVisible({ timeout: TIMEOUTS.DEFAULT });
+    await expect(readBtn).toBeEnabled({ timeout: TIMEOUTS.LONG });
+
+    // 3. Read initial counter value (expect 0)
     await readBtn.click();
-    await page.waitForTimeout(2000);
+    const counterDisplay = page.locator("div").filter({ hasText: /^\d+$/ });
+    await expect(counterDisplay.first()).toBeVisible({ timeout: TIMEOUTS.DEFAULT });
+    const initialText = await counterDisplay.first().textContent();
+    expect(Number(initialText?.trim())).toBe(0);
 
-    // Capture the counter value element (the large number display)
-    const counterDisplay = page.locator(
-      'div[style*="font-size: 3rem"], div[style*="fontSize"]',
-    );
-    const initialText = await counterDisplay.textContent();
-    const initialValue = initialText?.trim() === "\u2014" ? -1 : Number(initialText?.trim());
-
-    // Increment via V2 EIP-712 signing (triggers Merkle proof lookup)
+    // 4. Increment counter (triggers V2 EIP-712 signing with Merkle proofs)
     const incrementBtn = page.getByRole("button", { name: /Increment/i });
     await expect(incrementBtn).toBeEnabled();
     await incrementBtn.click();
 
-    // Wait for transaction to complete
-    await expect(incrementBtn).not.toHaveText("Sending tx...", {
-      timeout: TIMEOUTS.TX,
-    });
+    // Wait for tx to complete
+    await expect(incrementBtn).not.toHaveText("Sending tx...", { timeout: TIMEOUTS.TX });
 
-    // The counter should update automatically after increment
-    // (the increment handler calls simulate() after sending)
-    if (initialValue >= 0) {
-      // If we had a readable initial value, verify it increased
-      const updatedText = await counterDisplay.textContent();
-      const updatedValue = Number(updatedText?.trim());
-      expect(updatedValue).toBeGreaterThan(initialValue);
-    }
+    // 5. Read counter again (expect 1)
+    await readBtn.click();
+    await page.waitForTimeout(2000);
+    const updatedText = await counterDisplay.first().textContent();
+    expect(Number(updatedText?.trim())).toBe(1);
   });
 
   test("V2 disconnect and reconnect should work cleanly", async ({
     page,
+    walletless,
   }) => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");

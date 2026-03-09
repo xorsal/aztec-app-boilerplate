@@ -13,7 +13,7 @@
  * 2. Builds EIP-712 typed data with per-slot FunctionCall{N}/Arguments{N} types
  * 3. Calls walletClient.signTypedData() - MetaMask shows readable function names
  * 4. Gets per-call Merkle proofs from respective FunctionCall{N} trees
- * 5. Serializes to capsule (15 + 64*N Fields)
+ * 5. Serializes to capsule (9 + 54*N Fields)
  */
 
 import type { ContractArtifact } from "@aztec/aztec.js/abi";
@@ -33,19 +33,21 @@ import {
   type FunctionCallInputV2,
   type FunctionCallV2,
   type ArgumentType,
+  type AccountData,
+  type TxMetadata,
+  FC_PRIMARIES,
   MAX_ENTRYPOINT_CALLS,
   MAX_SIGNATURE_SIZE_V2,
   MAX_SERIALIZED_ARGS_V2,
-  MAX_ARGS_TYPE_STRING_LEN,
   MERKLE_DEPTH,
   EIP712_WITNESS_V2_SLOTS,
   DEFAULT_VERIFYING_CONTRACT_V2,
-  buildArgumentsTypeString,
+  MERKLE_MAX_ARGS,
   buildFunctionSignature,
   findFunctionArtifact,
+  registerRawArtifact,
   getMerkleProof,
   computeFcTypeHashBytes,
-  computeArgsTypeHashBytes,
 } from "@aztec-app/eip712";
 
 /**
@@ -137,12 +139,17 @@ export class MetaMaskEip712SigningDelegateV2
 
   /**
    * Register a contract artifact for function signature and type resolution.
+   * Optionally pass the raw JSON artifact to support functions stripped by loadContractArtifact (e.g. constructor).
    */
   registerContractArtifact(
     address: AztecAddress,
     artifact: ContractArtifact,
+    rawJson?: any,
   ): void {
     this.artifactMap.set(address.toString(), artifact);
+    if (rawJson) {
+      registerRawArtifact(artifact.name, rawJson);
+    }
   }
 
   /**
@@ -167,7 +174,7 @@ export class MetaMaskEip712SigningDelegateV2
     // Build FunctionCallV2 objects for EIP-712 typed data (per-call types)
     const fcObjects = functionCalls.map((c) => this.buildFunctionCallV2(c));
 
-    const accountData = {
+    const accountData: AccountData = {
       address: pad(toHex(contractAddress.toField().toBigInt()), {
         size: 32,
       }) as Hex,
@@ -175,7 +182,7 @@ export class MetaMaskEip712SigningDelegateV2
       version: DEFAULT_ACCOUNT_DATA.version,
     };
 
-    const txMetadata = {
+    const txMetadata: TxMetadata = {
       feePaymentMethod: 0,
       cancellable: false,
       txNonce,
@@ -216,7 +223,7 @@ export class MetaMaskEip712SigningDelegateV2
       ecdsaSignature,
       proofs,
       accountData,
-      contractAddress.toField().toBigInt(),
+      txMetadata,
     );
 
     const capsuleData = this.serializeToCapsule(oracleData, callCount);
@@ -244,9 +251,11 @@ export class MetaMaskEip712SigningDelegateV2
     return calls.map((call) => {
       const artifact = this.artifactMap.get(call.to.toString());
       const args = call.args.map((arg) => arg.toBigInt());
-      const argTypes = artifact
+      const inferredArgTypes = artifact
         ? inferArgTypes(artifact, call.name, args.length)
         : (Array(args.length).fill("bytes32") as ArgumentType[]);
+      // Cap to MERKLE_MAX_ARGS — the Merkle trees only cover 0..MAX_ARGS argument types
+      const argTypes = inferredArgTypes.slice(0, MERKLE_MAX_ARGS);
 
       if (artifact) {
         const func = findFunctionArtifact(artifact, call.name);
@@ -259,18 +268,20 @@ export class MetaMaskEip712SigningDelegateV2
             isPublic: call.type === FunctionType.PUBLIC,
           };
         }
+        // Function not in processed artifact (e.g. constructor stripped by loadContractArtifact).
+        // Use call.name as function signature — the EIP-712 hash covers it regardless.
+        return {
+          targetAddress: call.to.toField().toBigInt(),
+          functionSignature: call.name,
+          args,
+          argTypes,
+          isPublic: call.type === FunctionType.PUBLIC,
+        };
       }
 
-      console.warn(
-        `[SigningDelegateV2] No artifact for ${call.name} at ${call.to}`,
+      throw new Error(
+        `[SigningDelegateV2] No artifact registered for ${call.name} at ${call.to}. Call registerContractArtifact() first.`,
       );
-      return {
-        targetAddress: call.to.toField().toBigInt(),
-        functionSignature: `unknown_${call.name}`,
-        args,
-        argTypes,
-        isPublic: call.type === FunctionType.PUBLIC,
-      };
     });
   }
 
@@ -304,8 +315,8 @@ export class MetaMaskEip712SigningDelegateV2
     calls: FunctionCallInputV2[],
     ecdsaSignature: Uint8Array,
     merkleProofs: { siblingPath: Fr[]; leafIndex: number }[],
-    accountData: { walletName: string; version: string },
-    accountAddressBigInt: bigint,
+    accountData: AccountData,
+    txMetadata: TxMetadata,
   ) {
     const callCount = calls.length;
     const functionSignatures: Uint8Array[] = [];
@@ -316,12 +327,9 @@ export class MetaMaskEip712SigningDelegateV2
     const isPublicArr: boolean[] = [];
     const hideMsgSenderArr: boolean[] = [];
     const isStaticArr: boolean[] = [];
-    const argsTypeStrings: Uint8Array[] = [];
-    const argsTypeStringLengths: number[] = [];
     const merkleProofArrays: Fr[][] = [];
     const merkleLeafIndices: number[] = [];
     const fcTypeHashes: Uint8Array[] = [];
-    const argsTypeHashesArr: Uint8Array[] = [];
 
     for (let i = 0; i < callCount; i++) {
       const call = calls[i];
@@ -347,32 +355,38 @@ export class MetaMaskEip712SigningDelegateV2
       hideMsgSenderArr.push(call.hideMsgSender ?? false);
       isStaticArr.push(call.isStatic ?? false);
 
-      // Per-call type string (Arguments{N})
-      const typeString = buildArgumentsTypeString(`Arguments${slotNum}`, call.argTypes);
-      const tsBytes = new TextEncoder().encode(typeString);
-      const argsTS = new Uint8Array(MAX_ARGS_TYPE_STRING_LEN);
-      argsTS.set(tsBytes.slice(0, MAX_ARGS_TYPE_STRING_LEN));
-      argsTypeStrings.push(argsTS);
-      argsTypeStringLengths.push(Math.min(tsBytes.length, MAX_ARGS_TYPE_STRING_LEN));
-
       // Per-call Merkle proof
       merkleProofArrays.push(merkleProofs[i].siblingPath);
       merkleLeafIndices.push(merkleProofs[i].leafIndex);
 
-      // Per-call type hashes
+      // Per-call FunctionCall type hash
       fcTypeHashes.push(hexToBytes(computeFcTypeHashBytes(`FunctionCall${slotNum}`, call.argTypes)));
-      argsTypeHashesArr.push(hexToBytes(computeArgsTypeHashBytes(slotNum, call.argTypes)));
     }
 
-    // Wallet name
-    const walletNameBytes = new TextEncoder().encode(accountData.walletName);
-    const walletName = new Uint8Array(MAX_SIGNATURE_SIZE_V2);
-    walletName.set(walletNameBytes.slice(0, MAX_SIGNATURE_SIZE_V2));
+    // Precomputed hashes
+    const perCallArgTypes = calls.map(c => c.argTypes);
+    const entrypointTypeHash = hexToBytes(Eip712EncoderV2.computeEntrypointTypeHash(perCallArgTypes));
+    const accountDataHash = hexToBytes(Eip712EncoderV2.hashAccountData(accountData));
+    const txMetadataHash = hexToBytes(Eip712EncoderV2.hashTxMetadata(txMetadata));
 
-    // Wallet version
-    const walletVersionBytes = new TextEncoder().encode(accountData.version);
-    const walletVersion = new Uint8Array(32);
-    walletVersion.set(walletVersionBytes.slice(0, 32));
+    const callHashes: Uint8Array[] = [];
+    for (let i = 0; i < callCount; i++) {
+      const call = calls[i];
+      const slotNum = i + 1;
+      const contract = pad(toHex(call.targetAddress), { size: 32 }) as Hex;
+      const callHash = Eip712EncoderV2.hashFunctionCallV2(
+        FC_PRIMARIES[slotNum],
+        `Arguments${slotNum}`,
+        contract,
+        call.functionSignature,
+        call.argTypes,
+        call.args,
+        call.isPublic ?? false,
+        call.hideMsgSender ?? false,
+        call.isStatic ?? false,
+      );
+      callHashes.push(hexToBytes(callHash));
+    }
 
     return {
       ecdsaSignature,
@@ -384,30 +398,22 @@ export class MetaMaskEip712SigningDelegateV2
       isPublic: isPublicArr,
       hideMsgSender: hideMsgSenderArr,
       isStatic: isStaticArr,
-      argsTypeStrings,
-      argsTypeStringLengths,
       merkleProofs: merkleProofArrays,
       merkleLeafIndices,
       fcTypeHashes,
-      argsTypeHashes: argsTypeHashesArr,
-      walletName,
-      walletNameLength: Math.min(
-        walletNameBytes.length,
-        MAX_SIGNATURE_SIZE_V2,
-      ),
-      walletVersion,
-      walletVersionLength: Math.min(walletVersionBytes.length, 32),
-      accountAddress: accountAddressBigInt,
-      chainId: this.chainId,
+      callHashes,
+      entrypointTypeHash,
+      accountDataHash,
+      txMetadataHash,
     };
   }
 
   /**
    * Serialize V2 witness to capsule fields.
    *
-   * Layout: 3 + N*32 (call data) + N*32 (type/proof per call) + 12 (metadata)
-   * Total: 15 + 64*N fields
-   * N=1: 79, N=2: 143, N=3: 207, N=4: 271
+   * Layout: 3 + N*32 (call data) + N*22 (proof per call) + 6 (footer)
+   * Total: 9 + 54*N fields
+   * N=1: 63, N=2: 117, N=3: 171, N=4: 225
    */
   private serializeToCapsule(
     data: ReturnType<typeof MetaMaskEip712SigningDelegateV2.prototype.buildOracleData>,
@@ -418,7 +424,7 @@ export class MetaMaskEip712SigningDelegateV2
     // [0-2]: Signature (64 bytes -> 3 fields: 31+31+2)
     fields.push(...this.packBytes(data.ecdsaSignature, [31, 31, 2]));
 
-    // N calls, each 32 fields
+    // N calls, each 32 fields (UNCHANGED)
     for (let callIdx = 0; callIdx < callCount; callIdx++) {
       // Function signature (128 bytes -> 5 fields: 4×31 + 1×4)
       fields.push(
@@ -450,18 +456,8 @@ export class MetaMaskEip712SigningDelegateV2
       fields.push(Fr.ZERO);
     }
 
-    // N type/proof blocks, each 32 fields
+    // N proof blocks, each 22 fields
     for (let callIdx = 0; callIdx < callCount; callIdx++) {
-      // Args type string (256 bytes -> 9 fields: 8×31 + 1×8)
-      fields.push(
-        ...this.packBytes(data.argsTypeStrings[callIdx], [
-          31, 31, 31, 31, 31, 31, 31, 31, 8,
-        ]),
-      );
-
-      // Args type string length
-      fields.push(new Fr(data.argsTypeStringLengths[callIdx]));
-
       // Merkle proof (MERKLE_DEPTH fields + padding to 17)
       for (let i = 0; i < MERKLE_DEPTH; i++) {
         fields.push(data.merkleProofs[callIdx][i]);
@@ -473,34 +469,17 @@ export class MetaMaskEip712SigningDelegateV2
       // Merkle leaf index
       fields.push(new Fr(data.merkleLeafIndices[callIdx]));
 
-      // FunctionCall type hash (32 bytes -> 2 fields: 31+1)
+      // FC type hash (32 bytes -> 2 fields: 31+1)
       fields.push(...this.packBytes(data.fcTypeHashes[callIdx], [31, 1]));
 
-      // Arguments type hash (32 bytes -> 2 fields: 31+1)
-      fields.push(...this.packBytes(data.argsTypeHashes[callIdx], [31, 1]));
+      // Call hash (32 bytes -> 2 fields: 31+1)
+      fields.push(...this.packBytes(data.callHashes[callIdx], [31, 1]));
     }
 
-    // Metadata (12 fields)
-    // wallet_name (128 bytes -> 5 fields)
-    fields.push(...this.packBytes(data.walletName, [31, 31, 31, 31, 4]));
-
-    // wallet_name_length
-    fields.push(new Fr(data.walletNameLength));
-
-    // wallet_version (32 bytes -> 2 fields: 31+1)
-    fields.push(...this.packBytes(data.walletVersion, [31, 1]));
-
-    // wallet_version_length
-    fields.push(new Fr(data.walletVersionLength));
-
-    // account_address
-    fields.push(new Fr(data.accountAddress));
-
-    // chain_id
-    fields.push(new Fr(data.chainId));
-
-    // padding
-    fields.push(Fr.ZERO);
+    // Footer (6 fields)
+    fields.push(...this.packBytes(data.entrypointTypeHash, [31, 1]));
+    fields.push(...this.packBytes(data.accountDataHash, [31, 1]));
+    fields.push(...this.packBytes(data.txMetadataHash, [31, 1]));
 
     return fields;
   }

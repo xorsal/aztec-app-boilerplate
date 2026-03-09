@@ -114,7 +114,7 @@ describe("Eip712AccountV2", () => {
       expect(capsule.contractAddress.equals(contractAddress)).toBe(true);
     });
 
-    it("should serialize to 79 fields for 1 call", async () => {
+    it("should serialize to 63 fields for 1 call", async () => {
       const account = new Eip712AccountV2(TEST_PRIVATE_KEY);
       const contractAddress = AztecAddress.fromBigInt(999n);
       const call: FunctionCallInputV2 = {
@@ -129,7 +129,7 @@ describe("Eip712AccountV2", () => {
         contractAddress,
       );
 
-      expect(capsule.data).toHaveLength(79);
+      expect(capsule.data).toHaveLength(63);
     });
 
     it("should handle single function call", async () => {
@@ -147,7 +147,7 @@ describe("Eip712AccountV2", () => {
         contractAddress,
       );
 
-      expect(capsule.data).toHaveLength(79);
+      expect(capsule.data).toHaveLength(63);
     });
 
     it("should handle two function calls", async () => {
@@ -173,7 +173,7 @@ describe("Eip712AccountV2", () => {
         contractAddress,
       );
 
-      expect(capsule.data).toHaveLength(143);
+      expect(capsule.data).toHaveLength(117);
     });
 
     it("should handle three function calls", async () => {
@@ -205,7 +205,7 @@ describe("Eip712AccountV2", () => {
         contractAddress,
       );
 
-      expect(capsule.data).toHaveLength(207);
+      expect(capsule.data).toHaveLength(171);
     });
 
     it("should throw for empty calls", async () => {
@@ -294,7 +294,7 @@ describe("Eip712AccountV2", () => {
         contractAddress,
       );
 
-      expect(capsule.data).toHaveLength(67);
+      expect(capsule.data).toHaveLength(55);
     });
 
     it("should handle call with arguments", async () => {
@@ -312,7 +312,7 @@ describe("Eip712AccountV2", () => {
         contractAddress,
       );
 
-      expect(capsule.data).toHaveLength(67);
+      expect(capsule.data).toHaveLength(55);
     });
 
     it("should include inner hash", async () => {
@@ -332,8 +332,8 @@ describe("Eip712AccountV2", () => {
         innerHash,
       );
 
-      // Inner hash is the last field (index 62)
-      expect(capsule.data[62].toBigInt()).toBe(innerHash);
+      // Inner hash is at index 52 in new layout
+      expect(capsule.data[52].toBigInt()).toBe(innerHash);
     });
   });
 

@@ -15,6 +15,8 @@ import { AztecAddress } from "@aztec/stdlib/aztec-address";
 import { TxStatus } from "@aztec/stdlib/tx";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
 import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
+import { ContractInstanceRegistryContractArtifact } from "@aztec/noir-contracts.js/ContractInstanceRegistry";
+import { ProtocolContractAddress } from "@aztec/protocol-contracts";
 import type { ContractArtifact } from "@aztec/stdlib/abi";
 import { Eip712AccountContract, Eip712AccountContractV2 } from "@aztec-app/eip712";
 import { AZTEC_NODE_URL, EIP712_CHAIN_ID } from "../config";
@@ -41,8 +43,10 @@ interface WalletState {
   setAccountVersion: (version: AccountVersion) => void;
   connect: () => Promise<void>;
   disconnect: () => void;
-  /** Register a contract artifact for human-readable EIP-712 signing. */
-  registerContractArtifact: (address: AztecAddress, artifact: ContractArtifact) => void;
+  /** Register a contract artifact for human-readable EIP-712 signing.
+   *  Pass rawJson (the original compiled JSON before loadContractArtifact processing)
+   *  so stripped functions like constructor can be resolved. */
+  registerContractArtifact: (address: AztecAddress, artifact: ContractArtifact, rawJson?: any) => void;
 }
 
 export const useWalletStore = create<WalletState>((set, get) => ({
@@ -167,6 +171,10 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         sponsoredFPCInstance.address,
         SponsoredFPCContractArtifact,
       );
+      signingDelegate.registerContractArtifact(
+        ProtocolContractAddress.ContractInstanceRegistry,
+        ContractInstanceRegistryContractArtifact,
+      );
 
       set({
         wallet,
@@ -177,8 +185,8 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         isConnected: true,
         isConnecting: false,
         isDeploying: true,
-        registerContractArtifact: (addr: AztecAddress, artifact: ContractArtifact) => {
-          signingDelegate.registerContractArtifact(addr, artifact);
+        registerContractArtifact: (addr: AztecAddress, artifact: ContractArtifact, rawJson?: any) => {
+          signingDelegate.registerContractArtifact(addr, artifact, rawJson);
         },
       });
 

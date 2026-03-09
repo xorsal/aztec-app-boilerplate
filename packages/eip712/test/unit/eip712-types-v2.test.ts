@@ -30,8 +30,8 @@ describe("EIP-712 V2 Types", () => {
       expect(MAX_ENTRYPOINT_CALLS).toBe(4);
     });
 
-    it("should have MAX_ARGS_V2 = 10", () => {
-      expect(MAX_ARGS_V2).toBe(10);
+    it("should have MAX_ARGS_V2 = 5", () => {
+      expect(MAX_ARGS_V2).toBe(5);
     });
 
     it("should have MAX_SERIALIZED_ARGS_V2 = 20", () => {

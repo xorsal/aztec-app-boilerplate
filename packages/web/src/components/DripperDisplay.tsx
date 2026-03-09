@@ -9,6 +9,7 @@ import {
   DripperContractArtifact,
 } from "@defi-wonderland/aztec-standards/dist/src/artifacts/Dripper.js";
 import {
+  TokenContract,
   TokenContractArtifact,
 } from "@defi-wonderland/aztec-standards/dist/src/artifacts/Token.js";
 import DripperArtifactJson from "@defi-wonderland/aztec-standards/target/dripper-Dripper.json";
@@ -24,6 +25,8 @@ export function DripperDisplay() {
   } = useAztecWallet();
 
   const [amount, setAmount] = useState("100");
+  const [balance, setBalance] = useState<bigint | null>(null);
+  const [loadingBalance, setLoadingBalance] = useState(false);
   const [dripping, setDripping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -83,6 +86,23 @@ export function DripperDisplay() {
     return () => { cancelled = true; };
   }, [wallet, isConnected, hasAddresses]);
 
+  // Fetch private token balance
+  const fetchBalance = useCallback(async () => {
+    if (!wallet || !address || !hasAddresses) return;
+    setLoadingBalance(true);
+    try {
+      const tokenAddress = AztecAddress.fromString(TOKEN_ADDRESS);
+      const token = await TokenContract.at(tokenAddress, wallet);
+      const bal = await token.methods.balance_of_private(address).simulate({ from: address });
+      setBalance(bal);
+    } catch (err: any) {
+      console.error("[dripper] balance_of_private failed:", err);
+      setError(err.message || "Failed to read balance");
+    } finally {
+      setLoadingBalance(false);
+    }
+  }, [wallet, address, hasAddresses]);
+
   // Call drip_to_private on the Dripper contract
   const dripPrivate = useCallback(async () => {
     if (!wallet || !address || !hasAddresses) return;
@@ -104,13 +124,15 @@ export function DripperDisplay() {
       });
 
       setSuccess(`Dripped ${amount} DRIP tokens privately!`);
+      // Refresh balance
+      await fetchBalance();
     } catch (err: any) {
       console.error("[dripper] drip_to_private failed:", err);
       setError(err.message || "Failed to drip");
     } finally {
       setDripping(false);
     }
-  }, [wallet, address, hasAddresses, amount, sponsoredFpcAddress]);
+  }, [wallet, address, hasAddresses, amount, sponsoredFpcAddress, fetchBalance]);
 
   if (!isConnected) {
     return (
@@ -151,6 +173,20 @@ export function DripperDisplay() {
           <span style={styles.label}>Token:</span>
           <span style={styles.mono}>{TOKEN_ADDRESS.slice(0, 10)}...{TOKEN_ADDRESS.slice(-6)}</span>
         </div>
+      </div>
+
+      <div style={styles.balanceRow}>
+        <span style={styles.label}>Private Balance:</span>
+        <span style={styles.balanceValue}>
+          {loadingBalance ? "..." : balance !== null ? balance.toString() : "\u2014"}
+        </span>
+        <button
+          onClick={fetchBalance}
+          disabled={!canInteract || loadingBalance}
+          style={styles.refreshButton}
+        >
+          {loadingBalance ? "..." : "\u21BB"}
+        </button>
       </div>
 
       <div style={styles.inputGroup}>
@@ -215,6 +251,27 @@ const styles: Record<string, React.CSSProperties> = {
   mono: {
     fontFamily: "var(--font-mono)",
     color: "var(--text-muted)",
+  },
+  balanceRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.5rem",
+    marginBottom: "1rem",
+  },
+  balanceValue: {
+    fontFamily: "var(--font-mono)",
+    fontSize: "1.25rem",
+    fontWeight: 600,
+  },
+  refreshButton: {
+    background: "none",
+    border: "1px solid var(--border)",
+    borderRadius: "6px",
+    color: "var(--text-muted)",
+    cursor: "pointer",
+    fontSize: "1rem",
+    padding: "0.15rem 0.4rem",
+    lineHeight: 1,
   },
   inputGroup: {
     display: "flex",

@@ -88,10 +88,23 @@ async function getWalletlessBundle(): Promise<string> {
   // walletless's viem (2.43.5) needs ox@0.11.1, but yarn hoisted a stale
   // ox@0.8.1 into viem/node_modules. We add walletless/node_modules to the
   // search path so esbuild finds the correct ox@0.11.1 first.
+  // Additionally, viem has its own nested node_modules/ox@0.8.1 that esbuild
+  // prefers, so we alias "ox" to the correct version in walletless/node_modules.
+  const { resolve: resolvePath, dirname } = await import("path");
+  const { fileURLToPath: toPath } = await import("url");
+  // Compute absolute paths from this fixture file location, not process.cwd()
+  const fixtureDir = dirname(toPath(import.meta.url));
+  const repoRoot = resolvePath(fixtureDir, "../../../../..");
   const walletlessNodeModules = join(
-    process.cwd(),
-    "../../node_modules/@wonderland/walletless/node_modules",
+    repoRoot,
+    "node_modules/@wonderland/walletless/node_modules",
   );
+  const correctOxEsm = resolvePath(walletlessNodeModules, "ox/_esm");
+  const oxRoot = resolvePath(walletlessNodeModules, "ox");
+  const { readFileSync, existsSync } = await import("fs");
+  const oxExports: Record<string, any> = JSON.parse(
+    readFileSync(resolvePath(oxRoot, "package.json"), "utf-8"),
+  ).exports ?? {};
 
   const result = await build({
     stdin: {
@@ -107,6 +120,36 @@ async function getWalletlessBundle(): Promise<string> {
     write: false,
     minify: true,
     nodePaths: [walletlessNodeModules],
+    plugins: [
+      {
+        name: "resolve-ox",
+        setup(pluginBuild) {
+          // Force all "ox" and "ox/*" imports to the correct ox@0.11.1
+          // that lives in walletless/node_modules, bypassing the stale
+          // ox@0.8.1 nested inside viem/node_modules.
+          // We read the exports map to resolve correctly: standard modules
+          // go to _esm/core/{name}.js, extensions to _esm/{name}/index.js.
+          pluginBuild.onResolve({ filter: /^ox(\/|$)/ }, (args) => {
+            if (args.path === "ox") {
+              return { path: resolvePath(correctOxEsm, "index.js") };
+            }
+            // Look up "./subpath" in the exports map
+            const exportKey = "./" + args.path.slice(3); // "ox/erc8010" → "./erc8010"
+            const entry = oxExports[exportKey];
+            if (entry?.import) {
+              return { path: resolvePath(oxRoot, entry.import) };
+            }
+            // Fallback: try _esm/core/{name}.js then _esm/{name}/index.js
+            const subpath = args.path.slice(3);
+            const coreFile = resolvePath(correctOxEsm, "core", subpath + ".js");
+            if (existsSync(coreFile)) {
+              return { path: coreFile };
+            }
+            return { path: resolvePath(correctOxEsm, subpath, "index.js") };
+          });
+        },
+      },
+    ],
   });
 
   const bundle = result.outputFiles?.[0]?.text ?? "";

@@ -54,6 +54,28 @@ export async function waitForCounter(page: Page): Promise<void> {
 }
 
 /**
+ * Waits for the Dripper + Token contracts to be registered with PXE.
+ * Listens for the "[dripper] Both contracts registered" console log
+ * emitted by DripperDisplay after successful registration.
+ *
+ * To avoid missing early console events, pass a `consoleLogs` array
+ * that is populated in beforeEach. If the message was already seen,
+ * this returns immediately.
+ */
+export async function waitForDripperRegistration(
+  page: Page,
+  consoleLogs?: string[],
+): Promise<void> {
+  const marker = "[dripper] Both contracts registered";
+  if (consoleLogs?.some((msg) => msg.includes(marker))) return;
+
+  await page.waitForEvent("console", {
+    predicate: (msg) => msg.text().includes(marker),
+    timeout: TIMEOUTS.TX,
+  });
+}
+
+/**
  * Deploys the Counter contract via the in-browser "Deploy Counter" button,
  * then waits for the contract to be registered and interactive.
  *

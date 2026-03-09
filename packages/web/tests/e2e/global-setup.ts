@@ -35,12 +35,31 @@ export default async function globalSetup() {
   const contractAddress = match[1];
   console.log(`[global-setup] Counter deployed at ${contractAddress}`);
 
-  // Write .env with the deployed contract address
+  // Deploy Dripper + Token contracts via the offchain deploy script
+  // (this merges VITE_DRIPPER_ADDRESS + VITE_TOKEN_ADDRESS into .env)
+  console.log("[global-setup] Deploying Dripper + Token contracts...");
+  const dripperOutput = execSync(
+    `AZTEC_NODE_URL=${AZTEC_NODE_URL} npx tsx scripts/deploy-dripper.ts`,
+    { cwd: offchainRoot, encoding: "utf-8", timeout: 120_000 },
+  );
+
+  const dripperMatch = dripperOutput.match(/VITE_DRIPPER_ADDRESS=(\S+)/);
+  const tokenMatch = dripperOutput.match(/VITE_TOKEN_ADDRESS=(\S+)/);
+  if (!dripperMatch || !tokenMatch) {
+    console.error("[global-setup] Dripper deploy output:\n", dripperOutput);
+    throw new Error("Failed to extract Dripper/Token addresses from deploy output");
+  }
+  console.log(`[global-setup] Dripper deployed at ${dripperMatch[1]}`);
+  console.log(`[global-setup] Token deployed at ${tokenMatch[1]}`);
+
+  // Write .env with all deployed contract addresses
   const envContent = [
     `VITE_AZTEC_NODE_URL=${AZTEC_NODE_URL}`,
     `VITE_EIP712_CHAIN_ID=31337`,
     `VITE_CONTRACT_ADDRESS=${contractAddress}`,
+    `VITE_DRIPPER_ADDRESS=${dripperMatch[1]}`,
+    `VITE_TOKEN_ADDRESS=${tokenMatch[1]}`,
   ].join("\n");
   writeFileSync(envPath, envContent + "\n");
-  console.log("[global-setup] Wrote .env with contract address");
+  console.log("[global-setup] Wrote .env with all contract addresses");
 }

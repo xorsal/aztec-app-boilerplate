@@ -1,20 +1,29 @@
 import { useWalletStore } from "./store";
 
-/**
- * Lean hook for accessing the Aztec wallet state.
- * Wraps the Zustand store for convenient component use.
- */
 export function useAztecWallet() {
-  const { wallet, address, isConnecting, isConnected, error, connect, disconnect } =
-    useWalletStore();
+  return useWalletStore((s) => ({
+    wallet: s.wallet,
+    address: s.address,
+    walletType: s.walletType,
+    isConnected: s.isConnected,
+    isConnecting: s.isConnecting,
+    error: s.error,
 
-  return {
-    wallet,
-    address,
-    isConnecting,
-    isConnected,
-    error,
-    connect,
-    disconnect,
-  };
+    // Discovery
+    isDiscovering: s.isDiscovering,
+    providers: s.providers,
+
+    // Verification
+    verificationEmojis: s.verificationEmojis,
+    hasPendingVerification: s.pendingConnection !== null,
+
+    // Actions
+    startDiscovery: s.startDiscovery,
+    cancelDiscovery: s.cancelDiscovery,
+    connectExtension: s.connectExtension,
+    confirmConnection: s.confirmConnection,
+    cancelConnection: s.cancelConnection,
+    connectEmbedded: s.connectEmbedded,
+    disconnect: s.disconnect,
+  }));
 }

@@ -42,7 +42,7 @@ export const AZTEC_EXCLUDED = [
   "protocol-contracts",
 ]
   .map((p) => `@aztec/${p}`)
-  .concat(["@aztec-app/eip712", "@aztec-app/contracts"]);
+  .concat(["aztec-eip712", "@aztec-app/contracts"]);
 
 // ── Node built-in shims ──
 // Stub modules that leak from Aztec SDK server-side code paths.

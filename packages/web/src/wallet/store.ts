@@ -16,7 +16,7 @@ import { TxStatus } from "@aztec/stdlib/tx";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
 import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
 import type { ContractArtifact } from "@aztec/stdlib/abi";
-import { Eip712AccountContract } from "@aztec-app/eip712";
+import { Eip712AccountContract } from "aztec-eip712/src/accounts/Eip712AccountContract";
 import { AZTEC_NODE_URL, EIP712_CHAIN_ID } from "../config";
 import { MetaMaskEip712SigningDelegate } from "./signingDelegate";
 import {

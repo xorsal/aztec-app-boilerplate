@@ -19,14 +19,16 @@ import { AuthWitness } from "@aztec/stdlib/auth-witness";
 import type { Capsule } from "@aztec/stdlib/tx";
 import { hexToBytes, type Hex, type WalletClient } from "viem";
 
-import type { Eip712SigningDelegate } from "@aztec-app/eip712";
+import type { Eip712SigningDelegate } from "aztec-eip712/src/accounts/Eip712AuthWitnessProvider";
 import {
   Eip712Account,
   Eip712Encoder,
+  type FunctionCallInput,
+} from "aztec-eip712/src/lib/eip712";
+import {
   buildFunctionSignature,
   findFunctionArtifact,
-  type FunctionCallInput,
-} from "@aztec-app/eip712";
+} from "aztec-eip712/src/ts/utils/eip712-helpers";
 
 /**
  * MetaMask signing delegate for EIP-712 typed data signing.

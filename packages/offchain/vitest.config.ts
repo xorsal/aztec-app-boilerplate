@@ -31,7 +31,7 @@ export default defineConfig({
     },
     server: {
       deps: {
-        inline: [/@aztec/, /@noble\/(hashes|curves|ciphers)/, /viem/, /@scure/],
+        inline: [/@aztec/, /@noble\/(hashes|curves|ciphers)/, /viem/, /@scure/, /aztec-eip712/],
       },
     },
   },

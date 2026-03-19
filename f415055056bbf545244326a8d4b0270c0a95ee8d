@@ -1,0 +1,25 @@
+packages/offchain/src/counter.test.ts
+  498d4fccb774a5d6 38,45,54,64
+packages/offchain/src/utils.ts
+  498d4fccb774a5d6 21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "f415055056bbf545244326a8d4b0270c0a95ee8d",
+  "prompts": {
+    "498d4fccb774a5d6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88e7427d-1df1-48f3-8c5a-fb8e2ba5e1db",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "xorsal <zorzal@wonderland.xyz>",
+      "messages": [],
+      "total_additions": 18,
+      "total_deletions": 14,
+      "accepted_lines": 15,
+      "overriden_lines": 0
+    }
+  }
+}

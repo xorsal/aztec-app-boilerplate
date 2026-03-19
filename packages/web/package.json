@@ -19,7 +19,7 @@
     "@aztec/pxe": "4.1.0-rc.4",
     "react": "19.1.1",
     "react-dom": "19.1.1",
-    "viem": "2.31.3",
+    "viem": "2.43.5",
     "zustand": "5.0.9"
   },
   "devDependencies": {

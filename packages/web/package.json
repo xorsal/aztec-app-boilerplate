@@ -9,12 +9,12 @@
     "serve": "vite preview --port 3001"
   },
   "dependencies": {
-    "@aztec/accounts": "4.0.0-devnet.2-patch.1",
-    "@aztec/aztec.js": "4.0.0-devnet.2-patch.1",
-    "@aztec/stdlib": "4.0.0-devnet.2-patch.1",
-    "@aztec/wallets": "4.0.0-devnet.2-patch.1",
-    "@aztec/pxe": "4.0.0-devnet.2-patch.1",
-    "@aztec/wallet-sdk": "4.0.0-devnet.2-patch.1",
+    "@aztec/accounts": "4.1.0-rc.4",
+    "@aztec/aztec.js": "4.1.0-rc.4",
+    "@aztec/stdlib": "4.1.0-rc.4",
+    "@aztec/wallets": "4.1.0-rc.4",
+    "@aztec/pxe": "4.1.0-rc.4",
+    "@aztec/wallet-sdk": "4.1.0-rc.4",
     "react": "19.1.1",
     "react-dom": "19.1.1",
     "zustand": "5.0.9"
@@ -36,7 +36,7 @@
     "vite-plugin-wasm": "3.5.0"
   },
   "config": {
-    "aztecVersion": "4.0.0-devnet.2-patch.1"
+    "aztecVersion": "4.1.0-rc.4"
   },
   "resolutions": {
     "@noble/hashes": "1.8.0"

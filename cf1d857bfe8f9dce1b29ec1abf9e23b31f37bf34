@@ -1,0 +1,29 @@
+packages/web/vite-plugins/fix-static-field-init.ts
+  fc0f56378c9bd396 1-34
+packages/web/vite.config.ts
+  fc0f56378c9bd396 2,6,8-12,16,22-23,28-30,32-33,37-38,42,45,48
+packages/web/vite-plugins/node-builtins-shim.ts
+  fc0f56378c9bd396 1-50
+packages/web/vite-plugins/index.ts
+  fc0f56378c9bd396 1-2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "cf1d857bfe8f9dce1b29ec1abf9e23b31f37bf34",
+  "prompts": {
+    "fc0f56378c9bd396": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "83ef8e85-5512-4471-8b88-722b049839c7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "xorsal <zorzal@wonderland.xyz>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 106,
+      "overriden_lines": 0
+    }
+  }
+}

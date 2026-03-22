@@ -35,7 +35,7 @@ export default defineConfig({
   server: {
     port: 3001,
     headers: crossOriginHeaders,
-    fs: { allow: [".."] },
+    fs: { allow: ["../.."] },
   },
   preview: {
     port: 3001,

@@ -1,7 +1,8 @@
+import { useShallow } from "zustand/shallow";
 import { useWalletStore } from "./store";
 
 export function useAztecWallet() {
-  return useWalletStore((s) => ({
+  return useWalletStore(useShallow((s) => ({
     wallet: s.wallet,
     address: s.address,
     walletType: s.walletType,
@@ -25,5 +26,5 @@ export function useAztecWallet() {
     cancelConnection: s.cancelConnection,
     connectEmbedded: s.connectEmbedded,
     disconnect: s.disconnect,
-  }));
+  })));
 }

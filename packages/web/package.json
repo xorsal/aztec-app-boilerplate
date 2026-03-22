@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "NODE_OPTIONS='--max-old-space-size=8192' vite build",
-    "serve": "vite preview --port 3001"
+    "serve": "vite preview --port 3001",
+    "test:e2e": "npx playwright test",
+    "test:e2e:headless": "HEADLESS=1 npx playwright test",
+    "test:e2e:xvfb": "xvfb-run npx playwright test"
   },
   "dependencies": {
     "@aztec/accounts": "4.1.0-rc.4",
@@ -33,7 +36,8 @@
     "vite": "7.3.1",
     "vite-plugin-node-polyfills": "0.24.0",
     "vite-plugin-top-level-await": "1.6.0",
-    "vite-plugin-wasm": "3.5.0"
+    "vite-plugin-wasm": "3.5.0",
+    "@playwright/test": "1.52.0"
   },
   "config": {
     "aztecVersion": "4.1.0-rc.4"

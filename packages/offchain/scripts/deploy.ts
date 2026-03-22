@@ -5,6 +5,7 @@ import {
   INITIAL_TEST_SECRET_KEYS,
   INITIAL_TEST_ACCOUNT_SALTS,
 } from "@aztec/accounts/testing";
+import { AztecAddress } from "@aztec/stdlib/aztec-address";
 import { deployCounter } from "../src/utils.js";
 
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || "http://localhost:8080";
@@ -20,13 +21,13 @@ async function main() {
   // Create wallet
   console.log("💼 Initializing EmbeddedWallet...");
   const wallet = await EmbeddedWallet.create(aztecNode, {
+    ephemeral: true,
     pxeConfig: {
-      dataDirectory: "pxe-deploy",
       proverEnabled: false,
     },
   });
 
-  // Register the first test account as owner/deployer
+  // Register and deploy the first test account as owner/deployer
   console.log("👤 Setting up deployer account (Test Account #1)...");
   const accountManager = await wallet.createSchnorrAccount(
     INITIAL_TEST_SECRET_KEYS[0],
@@ -34,6 +35,21 @@ async function main() {
   );
   const ownerAddress = accountManager.address;
   console.log(`   Owner/Deployer: ${ownerAddress.toString()}`);
+
+  // Deploy the account contract on-chain (self-deployment from address zero)
+  // Skip if already deployed (existing nullifier means it's already on-chain)
+  console.log("📦 Deploying account contract...");
+  try {
+    const deployMethod = await accountManager.getDeployMethod();
+    await deployMethod.send({ from: AztecAddress.ZERO });
+    console.log("   Account deployed!");
+  } catch (err: any) {
+    if (err.message?.includes("Existing nullifier")) {
+      console.log("   Account already deployed, skipping.");
+    } else {
+      throw err;
+    }
+  }
 
   // Deploy the Counter contract
   console.log("\n📝 Deploying Counter contract...");

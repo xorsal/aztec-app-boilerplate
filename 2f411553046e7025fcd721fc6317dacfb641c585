@@ -1,0 +1,29 @@
+packages/contracts/counter/Nargo.toml
+  a563ea741ad46c59 8
+package.json
+  a563ea741ad46c59 27
+packages/offchain/package.json
+  a563ea741ad46c59 12-16,25
+packages/web/package.json
+  a563ea741ad46c59 15-20,43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "2f411553046e7025fcd721fc6317dacfb641c585",
+  "prompts": {
+    "a563ea741ad46c59": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fb100edb-3ff7-4f8f-9bc9-4bee92bf1cab",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "xorsal <zorzal@wonderland.xyz>",
+      "messages": [],
+      "total_additions": 15,
+      "total_deletions": 15,
+      "accepted_lines": 15,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -9,6 +9,7 @@
 use keccak256::keccak256;
 use ::aztec::oracle::capsules;
 use ::aztec::protocol::{
+    address::AztecAddress,
     constants::{DOM_SEP__AUTHWIT_INNER, DOM_SEP__FUNCTION_ARGS, DOM_SEP__PUBLIC_CALLDATA},
     hash::{poseidon2_hash_subarray, poseidon2_hash_with_separator},
     traits::{Deserialize, Serialize},
@@ -242,8 +243,9 @@ impl Deserialize for Eip712Witness5 {
 pub unconstrained fn load_eip712_witness_5(
     contract_address: ::aztec::protocol::address::AztecAddress,
 ) -> Option<Eip712Witness5> {
-    capsules::load(contract_address, EIP712_WITNESS_5_SLOT)
+    capsules::load(contract_address, EIP712_WITNESS_5_SLOT, AztecAddress::zero())
 }
+
 
 // =============================================================================
 // Individual Authwit Witness Structure
@@ -399,7 +401,7 @@ impl Deserialize for Eip712AuthwitWitness {
 pub unconstrained fn load_eip712_authwit_witness(
     contract_address: ::aztec::protocol::address::AztecAddress,
 ) -> Option<Eip712AuthwitWitness> {
-    capsules::load(contract_address, EIP712_AUTHWIT_SLOT)
+    capsules::load(contract_address, EIP712_AUTHWIT_SLOT, AztecAddress::zero())
 }
 
 // =============================================================================

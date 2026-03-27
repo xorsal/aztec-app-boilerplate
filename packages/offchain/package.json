@@ -8,14 +8,14 @@
     "deploy": "tsx scripts/deploy.ts"
   },
   "dependencies": {
-    "@aztec/accounts": "4.0.0-devnet.2-patch.1",
-    "@aztec/aztec.js": "4.0.0-devnet.2-patch.1",
-    "@aztec/constants": "4.0.0-devnet.2-patch.1",
-    "@aztec/entrypoints": "4.0.0-devnet.2-patch.1",
-    "@aztec/noir-contracts.js": "4.0.0-devnet.2-patch.1",
-    "@aztec/pxe": "4.0.0-devnet.2-patch.1",
-    "@aztec/stdlib": "4.0.0-devnet.2-patch.1",
-    "@aztec/wallets": "4.0.0-devnet.2-patch.1",
+    "@aztec/accounts": "4.2.0-aztecnr-rc.2",
+    "@aztec/aztec.js": "4.2.0-aztecnr-rc.2",
+    "@aztec/constants": "4.2.0-aztecnr-rc.2",
+    "@aztec/entrypoints": "4.2.0-aztecnr-rc.2",
+    "@aztec/noir-contracts.js": "4.2.0-aztecnr-rc.2",
+    "@aztec/pxe": "4.2.0-aztecnr-rc.2",
+    "@aztec/stdlib": "4.2.0-aztecnr-rc.2",
+    "@aztec/wallets": "4.2.0-aztecnr-rc.2",
     "@noble/curves": "1.9.7",
     "@types/node": "22.5.1",
     "viem": "2.31.3"
@@ -26,7 +26,7 @@
     "vitest": "3.2.4"
   },
   "config": {
-    "aztecVersion": "4.0.0-devnet.2-patch.1"
+    "aztecVersion": "4.2.0-aztecnr-rc.2"
   },
   "resolutions": {
     "@noble/hashes": "1.8.0"

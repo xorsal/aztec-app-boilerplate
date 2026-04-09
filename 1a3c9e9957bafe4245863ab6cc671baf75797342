@@ -1,0 +1,25 @@
+packages/web/playwright.config.ts
+  b2e6d33df60e6a20 20
+packages/web/tests/e2e/global-setup.ts
+  b2e6d33df60e6a20 2-3,28-33,35-40,43-44,46-50,52-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.6",
+  "base_commit_sha": "1a3c9e9957bafe4245863ab6cc671baf75797342",
+  "prompts": {
+    "b2e6d33df60e6a20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5668acbd-4170-43cf-a4ab-9a7010c617ab",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "xorsal",
+      "messages": [],
+      "total_additions": 62,
+      "total_deletions": 95,
+      "accepted_lines": 37,
+      "overriden_lines": 0
+    }
+  }
+}

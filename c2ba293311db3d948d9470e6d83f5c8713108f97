@@ -1,0 +1,38 @@
+packages/web/vite.config.ts
+  4b20fccba3e308ef 40
+packages/web/package.json
+  4b20fccba3e308ef 22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "c2ba293311db3d948d9470e6d83f5c8713108f97",
+  "prompts": {
+    "4b20fccba3e308ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "276e5e7e-e589-4213-9b82-7071c9d5af26",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "xorsal <zorzal@wonderland.xyz>",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 14,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    },
+    "9657034158ae5e4c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fa964215-f3c6-40c3-9dbe-1dc9d6a7a681",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "xorsal <zorzal@wonderland.xyz>",
+      "messages": [],
+      "total_additions": 9,
+      "total_deletions": 2,
+      "accepted_lines": 239,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,29 @@
+packages/contracts/counter/Nargo.toml
+  840b2a651da730e4 8
+packages/web/package.json
+  840b2a651da730e4 12-17,39
+packages/offchain/package.json
+  840b2a651da730e4 12-16,25
+package.json
+  840b2a651da730e4 26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "36b95cbbe9a9f1b5f7d7c596a2ff27df41c9b3ce",
+  "prompts": {
+    "840b2a651da730e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5a4499a0-b09e-4c34-9f1f-7d23ef9895b8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "xorsal <zorzal@wonderland.xyz>",
+      "messages": [],
+      "total_additions": 15,
+      "total_deletions": 15,
+      "accepted_lines": 15,
+      "overriden_lines": 0
+    }
+  }
+}

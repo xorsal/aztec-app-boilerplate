@@ -12,12 +12,12 @@
     "test:e2e:xvfb": "xvfb-run npx playwright test"
   },
   "dependencies": {
-    "@aztec/accounts": "4.1.0-rc.4",
-    "@aztec/aztec.js": "4.1.0-rc.4",
-    "@aztec/stdlib": "4.1.0-rc.4",
-    "@aztec/wallets": "4.1.0-rc.4",
-    "@aztec/pxe": "4.1.0-rc.4",
-    "@aztec/wallet-sdk": "4.1.0-rc.4",
+    "@aztec/accounts": "4.2.0-aztecnr-rc.2",
+    "@aztec/aztec.js": "4.2.0-aztecnr-rc.2",
+    "@aztec/stdlib": "4.2.0-aztecnr-rc.2",
+    "@aztec/wallets": "4.2.0-aztecnr-rc.2",
+    "@aztec/pxe": "4.2.0-aztecnr-rc.2",
+    "@aztec/wallet-sdk": "4.2.0-aztecnr-rc.2",
     "react": "19.1.1",
     "react-dom": "19.1.1",
     "zustand": "5.0.9"
@@ -40,7 +40,7 @@
     "@playwright/test": "1.52.0"
   },
   "config": {
-    "aztecVersion": "4.1.0-rc.4"
+    "aztecVersion": "4.2.0-aztecnr-rc.2"
   },
   "resolutions": {
     "@noble/hashes": "1.8.0"

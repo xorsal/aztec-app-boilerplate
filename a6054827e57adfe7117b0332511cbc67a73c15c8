@@ -1,0 +1,33 @@
+packages/web/src/components/CounterDisplay.tsx
+  b2e6d33df60e6a20 41,44,60,63
+packages/web/tests/e2e/counter.spec.ts
+  b2e6d33df60e6a20 48,50-52,57-59
+packages/offchain/scripts/deploy.ts
+  b2e6d33df60e6a20 1,69-78
+packages/web/playwright.config.ts
+  b2e6d33df60e6a20 5,8,10,14
+packages/web/tests/e2e/global-teardown.ts
+  b2e6d33df60e6a20 1-13
+packages/web/tests/e2e/global-setup.ts
+  b2e6d33df60e6a20 2-3,5,15-21,23-24,29-32,34-44,46-50,52-53,55-59,61,63-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.6",
+  "base_commit_sha": "a6054827e57adfe7117b0332511cbc67a73c15c8",
+  "prompts": {
+    "b2e6d33df60e6a20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5668acbd-4170-43cf-a4ab-9a7010c617ab",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "xorsal",
+      "messages": [],
+      "total_additions": 101,
+      "total_deletions": 67,
+      "accepted_lines": 98,
+      "overriden_lines": 0
+    }
+  }
+}

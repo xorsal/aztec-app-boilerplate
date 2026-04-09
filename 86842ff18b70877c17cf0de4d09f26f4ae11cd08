@@ -1,0 +1,35 @@
+packages/web/src/wallet/signingDelegate.ts
+  9657034158ae5e4c 22,26-28,31
+package.json
+  9657034158ae5e4c 15,29-31
+packages/web/src/wallet/store.ts
+  9657034158ae5e4c 19
+packages/offchain/vitest.config.ts
+  9657034158ae5e4c 34
+packages/offchain/package.json
+  9657034158ae5e4c 13-15,19-21
+packages/web/package.json
+  9657034158ae5e4c 26,28
+packages/web/vite-plugins.ts
+  9657034158ae5e4c 45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.12",
+  "base_commit_sha": "86842ff18b70877c17cf0de4d09f26f4ae11cd08",
+  "prompts": {
+    "9657034158ae5e4c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fa964215-f3c6-40c3-9dbe-1dc9d6a7a681",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "xorsal <zorzal@wonderland.xyz>",
+      "messages": [],
+      "total_additions": 346,
+      "total_deletions": 93,
+      "accepted_lines": 268,
+      "overriden_lines": 0
+    }
+  }
+}

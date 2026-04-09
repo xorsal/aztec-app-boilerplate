@@ -5,7 +5,7 @@ import {
   INITIAL_TEST_SECRET_KEYS,
   INITIAL_TEST_ACCOUNT_SALTS,
 } from "@aztec/accounts/testing";
-import { AztecAddress } from "@aztec/stdlib/aztec-address";
+import { NO_FROM } from "@aztec/aztec.js/account";
 import { deployCounter } from "../src/utils.js";
 
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || "http://localhost:8080";
@@ -41,7 +41,7 @@ async function main() {
   console.log("📦 Deploying account contract...");
   try {
     const deployMethod = await accountManager.getDeployMethod();
-    await deployMethod.send({ from: AztecAddress.ZERO });
+    await deployMethod.send({ from: NO_FROM });
     console.log("   Account deployed!");
   } catch (err: any) {
     if (err.message?.includes("Existing nullifier")) {

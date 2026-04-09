@@ -1,0 +1,23 @@
+packages/offchain/scripts/deploy.ts
+  b2e6d33df60e6a20 7,43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.6",
+  "base_commit_sha": "b5e2b796f75b4c241c1670c121ab9c41ed8244b7",
+  "prompts": {
+    "b2e6d33df60e6a20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5668acbd-4170-43cf-a4ab-9a7010c617ab",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "xorsal",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -2,14 +2,16 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   globalSetup: "./tests/e2e/global-setup.ts",
+  globalTeardown: "./tests/e2e/global-teardown.ts",
   testDir: "./tests/e2e",
-  fullyParallel: false,
   forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
   workers: 1,
-  reporter: "list",
+  reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL: "http://localhost:3001",
     headless: !!(process.env.CI || process.env.HEADLESS),
+    trace: "on-first-retry",
   },
   expect: {
     timeout: 30_000,

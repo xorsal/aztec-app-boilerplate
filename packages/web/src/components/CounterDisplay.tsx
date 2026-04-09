@@ -31,15 +31,6 @@ export function CounterDisplay() {
     return CounterContract.at(contractAddress, wallet);
   }, [wallet]);
 
-  const parseU128 = (result: any): bigint => {
-    if (typeof result === "bigint") return result;
-    if (typeof result === "number") return BigInt(result);
-    if (typeof result === "object" && result !== null && "lo" in result) {
-      return (BigInt(result.hi) << 64n) | BigInt(result.lo);
-    }
-    return BigInt(String(result));
-  };
-
   const fetchCounter = useCallback(async () => {
     if (!address) return;
     setLoading(true);
@@ -47,14 +38,10 @@ export function CounterDisplay() {
     try {
       const contract = await getContract();
       if (!contract) throw new Error("Contract not available");
-      const simResult = await contract.methods
+      const { result } = await contract.methods
         .get_counter()
         .simulate({ from: address });
-      // In v4.1+, simulate() returns { result, offchainEffects, ... }
-      const raw = simResult && typeof simResult === "object" && "result" in simResult
-        ? simResult.result
-        : simResult;
-      setCounter(parseU128(raw));
+      setCounter(result);
     } catch (err: any) {
       setError(err.message || "Failed to read counter");
     } finally {
@@ -70,14 +57,10 @@ export function CounterDisplay() {
       const contract = await getContract();
       if (!contract) throw new Error("Contract not available");
       await contract.methods.increment().send({ from: address });
-      // Re-fetch after increment
-      const simResult = await contract.methods
+      const { result } = await contract.methods
         .get_counter()
         .simulate({ from: address });
-      const raw = simResult && typeof simResult === "object" && "result" in simResult
-        ? simResult.result
-        : simResult;
-      setCounter(parseU128(raw));
+      setCounter(result);
     } catch (err: any) {
       setError(err.message || "Failed to increment");
     } finally {

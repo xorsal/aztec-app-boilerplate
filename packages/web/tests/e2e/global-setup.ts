@@ -1,7 +1,8 @@
 import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdtempSync } from "node:fs";
+import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -11,44 +12,65 @@ export default function globalSetup() {
   const envPath = resolve(webDir, ".env");
   const nodeUrl = process.env.VITE_AZTEC_NODE_URL || "http://localhost:8080";
 
-  // Skip deployment if .env already has a contract address
+  if (!existsSync(resolve(rootDir, "package.json"))) {
+    throw new Error(
+      `[global-setup] rootDir does not contain package.json: ${rootDir}`,
+    );
+  }
+
+  // Always remove stale .env so we get a fresh deploy
   if (existsSync(envPath)) {
-    const existing = readFileSync(envPath, "utf-8");
-    if (existing.includes("VITE_CONTRACT_ADDRESS=0x")) {
-      console.log("[global-setup] .env already has contract address, skipping deploy");
-      return;
-    }
+    unlinkSync(envPath);
+    console.log("[global-setup] Removed stale .env");
   }
 
   console.log("[global-setup] Deploying counter contract...");
 
-  const output = execSync("yarn deploy", {
-    cwd: rootDir,
-    encoding: "utf-8",
-    timeout: 300_000,
-    env: { ...process.env, AZTEC_NODE_URL: nodeUrl },
-  });
+  const deployOutputFile = join(
+    mkdtempSync(join(tmpdir(), "aztec-deploy-")),
+    "deploy-output.json",
+  );
 
-  console.log(output);
+  try {
+    execSync("yarn deploy", {
+      cwd: rootDir,
+      encoding: "utf-8",
+      timeout: 300_000,
+      env: {
+        ...process.env,
+        AZTEC_NODE_URL: nodeUrl,
+        DEPLOY_OUTPUT_FILE: deployOutputFile,
+      },
+    });
 
-  // Extract contract address from deploy output
-  const match = output.match(/CONTRACT_ADDRESS=(0x[a-fA-F0-9]+)/);
-  if (!match) {
-    throw new Error(
-      "[global-setup] Failed to extract CONTRACT_ADDRESS from deploy output",
-    );
+    if (!existsSync(deployOutputFile)) {
+      throw new Error(
+        `[global-setup] Deploy script did not write output file: ${deployOutputFile}`,
+      );
+    }
+
+    const deployOutput = JSON.parse(readFileSync(deployOutputFile, "utf-8"));
+    const contractAddress: string = deployOutput.contractAddress;
+
+    if (!contractAddress) {
+      throw new Error(
+        "[global-setup] Deploy output missing contractAddress field",
+      );
+    }
+
+    console.log(`[global-setup] Counter deployed at: ${contractAddress}`);
+
+    const envContent = [
+      `VITE_AZTEC_NODE_URL=${nodeUrl}`,
+      `VITE_CONTRACT_ADDRESS=${contractAddress}`,
+      "",
+    ].join("\n");
+
+    writeFileSync(envPath, envContent);
+    console.log("[global-setup] Wrote .env for web package");
+  } finally {
+    if (existsSync(deployOutputFile)) {
+      unlinkSync(deployOutputFile);
+    }
   }
-
-  const contractAddress = match[1];
-  console.log(`[global-setup] Counter deployed at: ${contractAddress}`);
-
-  // Write .env for the Vite dev server
-  const envContent = [
-    `VITE_AZTEC_NODE_URL=${nodeUrl}`,
-    `VITE_CONTRACT_ADDRESS=${contractAddress}`,
-    "",
-  ].join("\n");
-
-  writeFileSync(envPath, envContent);
-  console.log("[global-setup] Wrote .env for web package");
 }

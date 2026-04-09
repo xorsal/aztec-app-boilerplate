@@ -45,15 +45,18 @@ test("embedded wallet: read and increment counter", async ({ page }) => {
   await expect(incrementButton).toBeEnabled();
   await incrementButton.click();
 
-  // Wait for tx to complete — the button text changes to "Sending tx..." then back
-  // Use getByRole with exact text for "Increment" to detect when tx is done
+  // Wait for tx lifecycle: button text changes to "Sending tx..." then back to "Increment"
   await expect(
-    page.getByRole("button", { name: "Increment" }),
-  ).toBeVisible({ timeout: 300_000 });
+    page.getByRole("button", { name: "Sending tx..." }),
+  ).toBeVisible({ timeout: 10_000 });
+  await expect(incrementButton).toBeVisible({ timeout: 300_000 });
 
   // 7. Verify counter increased (auto-re-fetched after increment)
   await expect(async () => {
     const text = (await counterValue.textContent())!.trim();
+    if (!text || text === "—" || !/^\d+$/.test(text)) {
+      throw new Error(`Counter not yet numeric: "${text}"`);
+    }
     const newValue = BigInt(text);
     expect(newValue).toBeGreaterThan(initialValue);
   }).toPass({ timeout: 30_000 });

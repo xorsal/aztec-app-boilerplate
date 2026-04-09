@@ -1,4 +1,3 @@
-import { writeFileSync } from "node:fs";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import {
@@ -65,17 +64,6 @@ async function main() {
   console.log(`CONTRACT_ADDRESS=${contract.address.toString()}`);
   console.log(`VITE_CONTRACT_ADDRESS=${contract.address.toString()}`);
   console.log(`VITE_AZTEC_NODE_URL=${AZTEC_NODE_URL}`);
-
-  const outputFile = process.env.DEPLOY_OUTPUT_FILE;
-  if (outputFile) {
-    const result = {
-      contractAddress: contract.address.toString(),
-      deployerAddress: ownerAddress.toString(),
-    };
-    writeFileSync(outputFile, JSON.stringify(result, null, 2));
-    console.log(`\n📁 Wrote deploy output to ${outputFile}`);
-  }
-
   process.exit(0);
 }
 

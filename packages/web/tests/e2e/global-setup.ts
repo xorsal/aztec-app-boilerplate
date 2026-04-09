@@ -1,8 +1,7 @@
 import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdtempSync } from "node:fs";
-import { resolve, dirname, join } from "node:path";
+import { writeFileSync, existsSync, unlinkSync } from "node:fs";
+import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { tmpdir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -26,51 +25,30 @@ export default function globalSetup() {
 
   console.log("[global-setup] Deploying counter contract...");
 
-  const deployOutputFile = join(
-    mkdtempSync(join(tmpdir(), "aztec-deploy-")),
-    "deploy-output.json",
-  );
+  const output = execSync("yarn deploy", {
+    cwd: rootDir,
+    encoding: "utf-8",
+    timeout: 300_000,
+    env: { ...process.env, AZTEC_NODE_URL: nodeUrl },
+  });
 
-  try {
-    execSync("yarn deploy", {
-      cwd: rootDir,
-      encoding: "utf-8",
-      timeout: 300_000,
-      env: {
-        ...process.env,
-        AZTEC_NODE_URL: nodeUrl,
-        DEPLOY_OUTPUT_FILE: deployOutputFile,
-      },
-    });
-
-    if (!existsSync(deployOutputFile)) {
-      throw new Error(
-        `[global-setup] Deploy script did not write output file: ${deployOutputFile}`,
-      );
-    }
-
-    const deployOutput = JSON.parse(readFileSync(deployOutputFile, "utf-8"));
-    const contractAddress: string = deployOutput.contractAddress;
-
-    if (!contractAddress) {
-      throw new Error(
-        "[global-setup] Deploy output missing contractAddress field",
-      );
-    }
-
-    console.log(`[global-setup] Counter deployed at: ${contractAddress}`);
-
-    const envContent = [
-      `VITE_AZTEC_NODE_URL=${nodeUrl}`,
-      `VITE_CONTRACT_ADDRESS=${contractAddress}`,
-      "",
-    ].join("\n");
-
-    writeFileSync(envPath, envContent);
-    console.log("[global-setup] Wrote .env for web package");
-  } finally {
-    if (existsSync(deployOutputFile)) {
-      unlinkSync(deployOutputFile);
-    }
+  const match = output.match(/CONTRACT_ADDRESS=(0x[a-fA-F0-9]+)/);
+  if (!match) {
+    console.error(output);
+    throw new Error(
+      "[global-setup] Failed to extract CONTRACT_ADDRESS from deploy output",
+    );
   }
+
+  const contractAddress = match[1];
+  console.log(`[global-setup] Counter deployed at: ${contractAddress}`);
+
+  const envContent = [
+    `VITE_AZTEC_NODE_URL=${nodeUrl}`,
+    `VITE_CONTRACT_ADDRESS=${contractAddress}`,
+    "",
+  ].join("\n");
+
+  writeFileSync(envPath, envContent);
+  console.log("[global-setup] Wrote .env for web package");
 }

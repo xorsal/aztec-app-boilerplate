@@ -1,8 +1,11 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 import "dotenv/config";
 =======
 import { writeFileSync } from "node:fs";
 >>>>>>> 53c5992 (fix: improve e2e test reliability and simplify CounterDisplay)
+=======
+>>>>>>> a4c1a05 (refactor: simplify global-setup, remove DEPLOY_OUTPUT_FILE mechanism)
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import {
@@ -69,17 +72,6 @@ async function main() {
   console.log(`CONTRACT_ADDRESS=${contract.address.toString()}`);
   console.log(`VITE_CONTRACT_ADDRESS=${contract.address.toString()}`);
   console.log(`VITE_AZTEC_NODE_URL=${AZTEC_NODE_URL}`);
-
-  const outputFile = process.env.DEPLOY_OUTPUT_FILE;
-  if (outputFile) {
-    const result = {
-      contractAddress: contract.address.toString(),
-      deployerAddress: ownerAddress.toString(),
-    };
-    writeFileSync(outputFile, JSON.stringify(result, null, 2));
-    console.log(`\n📁 Wrote deploy output to ${outputFile}`);
-  }
-
   process.exit(0);
 }
 

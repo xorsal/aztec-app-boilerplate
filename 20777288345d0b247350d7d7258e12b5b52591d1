@@ -1,0 +1,31 @@
+packages/web/package.json
+  4023a308184cf733 15-20,43
+packages/contracts/counter/Nargo.toml
+  4023a308184cf733 8
+packages/offchain/src/counter.test.ts
+  4023a308184cf733 38,45,54,64
+package.json
+  4023a308184cf733 27
+packages/offchain/package.json
+  4023a308184cf733 12-16,25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.6",
+  "base_commit_sha": "20777288345d0b247350d7d7258e12b5b52591d1",
+  "prompts": {
+    "4023a308184cf733": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e78580ad-8134-4b9a-b394-8f7f6a7b5cdf",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "xorsal",
+      "messages": [],
+      "total_additions": 19,
+      "total_deletions": 19,
+      "accepted_lines": 19,
+      "overriden_lines": 0
+    }
+  }
+}

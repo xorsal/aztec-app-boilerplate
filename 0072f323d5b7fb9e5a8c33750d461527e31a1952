@@ -1,0 +1,44 @@
+README.md
+  2b06f7c1abecca6a 12
+packages/web/package.json
+  2b06f7c1abecca6a 15-20,43
+packages/offchain/package.json
+  2b06f7c1abecca6a 12-16,25
+packages/contracts/counter/Nargo.toml
+  2b06f7c1abecca6a 8
+package.json
+  2b06f7c1abecca6a 27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "0072f323d5b7fb9e5a8c33750d461527e31a1952",
+  "prompts": {
+    "2b06f7c1abecca6a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "610fbbdb-bf28-4bda-8a10-063e7ddd88bf",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "xorsal",
+      "messages": [],
+      "total_additions": 17,
+      "total_deletions": 17,
+      "accepted_lines": 17,
+      "overriden_lines": 0
+    },
+    "ddaf94254275747f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "afe879a9-0098-4254-b1c3-4fff44a75579",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "xorsal",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 76,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,33 @@
+.gitignore
+  ddaf94254275747f 27-29
+packages/offchain/package.json
+  ddaf94254275747f 12-16,25
+packages/contracts/counter/Nargo.toml
+  ddaf94254275747f 8
+package.json
+  ddaf94254275747f 27
+README.md
+  ddaf94254275747f 12
+packages/web/package.json
+  ddaf94254275747f 15-20,43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "073654ce02981d65a69d29aa84ceb79ef6b2690a",
+  "prompts": {
+    "ddaf94254275747f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "afe879a9-0098-4254-b1c3-4fff44a75579",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "xorsal",
+      "messages": [],
+      "total_additions": 96,
+      "total_deletions": 16,
+      "accepted_lines": 96,
+      "overriden_lines": 0
+    }
+  }
+}

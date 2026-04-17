@@ -1,0 +1,23 @@
+packages/web/src/components/CounterDisplay.tsx
+  9b365703a54b9913 21,27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "774e5ad5863016c2df3c22758fa774c16c6e30df",
+  "prompts": {
+    "9b365703a54b9913": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3217b9fc-271f-442f-b4ad-196a4b65bd0c",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "xorsal",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

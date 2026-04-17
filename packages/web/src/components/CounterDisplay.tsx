@@ -18,14 +18,14 @@ export function CounterDisplay() {
     if (!wallet || !CONTRACT_ADDRESS) return null;
     const contractAddress = AztecAddress.fromString(CONTRACT_ADDRESS);
 
-    // Register the counter contract with the embedded PXE (once)
+    // Register the counter contract with the embedded PXE (once, after success)
     if (!registered.current) {
       const node = createAztecNodeClient(AZTEC_NODE_URL);
       const instance = await node.getContract(contractAddress);
       if (instance) {
         await wallet.registerContract(instance, CounterContract.artifact);
+        registered.current = true;
       }
-      registered.current = true;
     }
 
     return CounterContract.at(contractAddress, wallet);

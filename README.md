@@ -9,7 +9,7 @@ A unified starter for Aztec v4 projects — contracts, offchain scripts, and web
 - Aztec CLI (install via `aztec-up`)
 
 ```bash
-curl -s https://install.aztec.network | VERSION=4.2.0-rc.1 bash
+curl -s https://install.aztec.network | VERSION=4.2.0 bash
 aztec-up
 ```
 

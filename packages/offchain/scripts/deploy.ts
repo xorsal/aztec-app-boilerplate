@@ -1,11 +1,4 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
 import "dotenv/config";
-=======
-import { writeFileSync } from "node:fs";
->>>>>>> 53c5992 (fix: improve e2e test reliability and simplify CounterDisplay)
-=======
->>>>>>> a4c1a05 (refactor: simplify global-setup, remove DEPLOY_OUTPUT_FILE mechanism)
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import {

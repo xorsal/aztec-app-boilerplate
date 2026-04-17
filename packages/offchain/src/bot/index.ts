@@ -67,7 +67,7 @@ async function main() {
 
   // Start polling
   const poller = createPoller(async () => {
-    const value = await counter.methods
+    const { result: value } = await counter.methods
       .get_counter()
       .simulate({ from: botAccount });
     await handleCounterEvent(value);

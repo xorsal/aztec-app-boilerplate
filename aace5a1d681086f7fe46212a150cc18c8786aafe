@@ -1,0 +1,23 @@
+packages/web/src/wallet/store.ts
+  9b365703a54b9913 125-133,210-218,254-261,264
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "aace5a1d681086f7fe46212a150cc18c8786aafe",
+  "prompts": {
+    "9b365703a54b9913": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3217b9fc-271f-442f-b4ad-196a4b65bd0c",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "xorsal",
+      "messages": [],
+      "total_additions": 27,
+      "total_deletions": 3,
+      "accepted_lines": 27,
+      "overriden_lines": 0
+    }
+  }
+}

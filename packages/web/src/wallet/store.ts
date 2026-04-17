@@ -122,7 +122,15 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   },
 
   connectExtension: async (provider: WalletProvider) => {
-    set({ isConnecting: true, error: null, _provider: provider });
+    const { _discoverySession } = get();
+    _discoverySession?.cancel();
+    set({
+      isConnecting: true,
+      error: null,
+      _provider: provider,
+      _discoverySession: null,
+      isDiscovering: false,
+    });
 
     try {
       const pending = await provider.establishSecureChannel(APP_ID);
@@ -199,7 +207,15 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   connectEmbedded: async () => {
     if (get().isConnecting || get().isConnected) return;
 
-    set({ isConnecting: true, error: null, isDiscovering: false, providers: [] });
+    const { _discoverySession } = get();
+    _discoverySession?.cancel();
+    set({
+      isConnecting: true,
+      error: null,
+      isDiscovering: false,
+      providers: [],
+      _discoverySession: null,
+    });
 
     try {
       const aztecNode = await createAztecNodeClient(AZTEC_NODE_URL, {});
@@ -235,9 +251,17 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   },
 
   disconnect: () => {
-    const { wallet, walletType, _disconnectUnsub, _discoverySession, _provider } = get();
+    const {
+      wallet,
+      walletType,
+      pendingConnection,
+      _disconnectUnsub,
+      _discoverySession,
+      _provider,
+    } = get();
     _disconnectUnsub?.();
     _discoverySession?.cancel();
+    pendingConnection?.cancel();
     _provider?.disconnect().catch(() => {});
     if (walletType === "embedded" && wallet) {
       (wallet as EmbeddedWallet)

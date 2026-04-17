@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { AztecAddress } from "@aztec/stdlib/aztec-address";

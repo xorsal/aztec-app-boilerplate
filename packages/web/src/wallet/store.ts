@@ -61,6 +61,8 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   },
 
   disconnect: () => {
+    const { wallet } = get();
+    wallet?.stop().catch((err) => console.error("wallet.stop failed", err));
     set({
       wallet: null,
       address: null,

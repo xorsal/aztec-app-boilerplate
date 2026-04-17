@@ -145,6 +145,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       set({
         error: error instanceof Error ? error.message : "Key exchange failed",
         isConnecting: false,
+        _provider: null,
       });
     }
   },
@@ -189,6 +190,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         isConnecting: false,
         pendingConnection: null,
         verificationEmojis: null,
+        _provider: null,
       });
     }
   },
@@ -215,6 +217,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       isDiscovering: false,
       providers: [],
       _discoverySession: null,
+      _provider: null,
     });
 
     try {

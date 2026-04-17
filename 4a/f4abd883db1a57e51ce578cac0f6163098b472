@@ -1,0 +1,25 @@
+README.md
+  2b06f7c1abecca6a 12
+packages/offchain/package.json
+  9b365703a54b9913 26-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "4af4abd883db1a57e51ce578cac0f6163098b472",
+  "prompts": {
+    "2b06f7c1abecca6a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "610fbbdb-bf28-4bda-8a10-063e7ddd88bf",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "xorsal",
+      "messages": [],
+      "total_additions": 17,
+      "total_deletions": 17,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}

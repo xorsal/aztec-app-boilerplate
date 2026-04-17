@@ -1,0 +1,9 @@
+packages/offchain/package.json
+  9b365703a54b9913 19-25,27-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "6dc4194ccece99eaac49e0eaf2feaf00ea11351c",
+  "prompts": {}
+}

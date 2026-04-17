@@ -1,0 +1,25 @@
+packages/offchain/package.json
+  9b365703a54b9913 19-25,27-31
+.gitignore
+  ddaf94254275747f 27-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "52dd15489da6348c9aa9d4ae1d13fb422c256137",
+  "prompts": {
+    "ddaf94254275747f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "afe879a9-0098-4254-b1c3-4fff44a75579",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "xorsal",
+      "messages": [],
+      "total_additions": 96,
+      "total_deletions": 16,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}

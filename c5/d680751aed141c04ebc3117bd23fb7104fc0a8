@@ -1,0 +1,23 @@
+packages/web/src/wallet/useAztecWallet.ts
+  9b365703a54b9913 5-10,12-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "c5d680751aed141c04ebc3117bd23fb7104fc0a8",
+  "prompts": {
+    "9b365703a54b9913": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3217b9fc-271f-442f-b4ad-196a4b65bd0c",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 446,
+      "total_deletions": 61,
+      "accepted_lines": 22,
+      "overriden_lines": 0
+    }
+  }
+}

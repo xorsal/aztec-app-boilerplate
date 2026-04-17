@@ -1,0 +1,23 @@
+README.md
+  2b06f7c1abecca6a 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "5df0e24ee98b48649780b599772ee62941e94b35",
+  "prompts": {
+    "2b06f7c1abecca6a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "610fbbdb-bf28-4bda-8a10-063e7ddd88bf",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "xorsal",
+      "messages": [],
+      "total_additions": 17,
+      "total_deletions": 17,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}

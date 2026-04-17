@@ -94,12 +94,21 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
     set({ _discoverySession: discovery });
 
-    discovery.done.then(() => {
-      // Only clear discovering if we haven't moved to connecting
-      if (get()._discoverySession === discovery) {
-        set({ isDiscovering: false });
-      }
-    });
+    discovery.done
+      .then(() => {
+        // Only clear discovering if we haven't moved to connecting
+        if (get()._discoverySession === discovery) {
+          set({ isDiscovering: false });
+        }
+      })
+      .catch((err: unknown) => {
+        if (get()._discoverySession !== discovery) return;
+        set({
+          isDiscovering: false,
+          _discoverySession: null,
+          error: err instanceof Error ? err.message : "Wallet discovery failed",
+        });
+      });
   },
 
   cancelDiscovery: () => {
@@ -124,9 +133,9 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         verificationEmojis: emojis,
         isDiscovering: false,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       set({
-        error: error.message || "Key exchange failed",
+        error: error instanceof Error ? error.message : "Key exchange failed",
         isConnecting: false,
       });
     }
@@ -163,9 +172,12 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         _discoverySession: null,
         _disconnectUnsub: unsub,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       set({
-        error: error.message || "Failed to confirm connection",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to confirm connection",
         isConnecting: false,
         pendingConnection: null,
         verificationEmojis: null,
@@ -211,19 +223,27 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         isConnected: true,
         isConnecting: false,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       set({
-        error: error.message || "Failed to connect embedded wallet",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to connect embedded wallet",
         isConnecting: false,
       });
     }
   },
 
   disconnect: () => {
-    const { _disconnectUnsub, _discoverySession, _provider } = get();
+    const { wallet, walletType, _disconnectUnsub, _discoverySession, _provider } = get();
     _disconnectUnsub?.();
     _discoverySession?.cancel();
     _provider?.disconnect().catch(() => {});
+    if (walletType === "embedded" && wallet) {
+      (wallet as EmbeddedWallet)
+        .stop()
+        .catch((err) => console.error("wallet.stop failed", err));
+    }
 
     set({ ...initialState });
   },

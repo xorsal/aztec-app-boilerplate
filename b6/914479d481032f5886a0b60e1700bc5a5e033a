@@ -1,0 +1,23 @@
+packages/web/tests/e2e/global-setup.ts
+  s_a15f5d8e3b32e2::t_51bfa510a66f2c 2-7,10-11,15-55,59-64,72-75,77-84,87-99,101-104,106-113,116-141,151-159
+packages/web/tests/e2e/global-teardown.ts
+  s_a15f5d8e3b32e2::t_520e31a1d63d7a 1,9-24,27
+packages/offchain/scripts/deploy.ts
+  s_a15f5d8e3b32e2::t_ac30c32b86342c 11-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "b6914479d481032f5886a0b60e1700bc5a5e033a",
+  "prompts": {},
+  "sessions": {
+    "s_a15f5d8e3b32e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e72997ac-1f84-4b3d-992d-1da6df2bb0bc",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "xorsal <zorzal@wonderland.xyz>"
+    }
+  }
+}

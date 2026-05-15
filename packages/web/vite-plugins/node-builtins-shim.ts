@@ -8,8 +8,9 @@ export const nodeBuiltinsShim = (): Plugin => ({
   name: "node-builtins-shim",
   enforce: "pre",
   resolveId(source) {
-    if (["fs/promises", "fs", "net", "tty"].includes(source)) {
-      return `\0virtual:${source}`;
+    const normalized = source.startsWith("node:") ? source.slice(5) : source;
+    if (["fs/promises", "fs", "net", "tty"].includes(normalized)) {
+      return `\0virtual:${normalized}`;
     }
     return null;
   },

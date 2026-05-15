@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "sandbox:start": "aztec start --local-network",
     "test:js": "vitest run",
     "deploy": "tsx scripts/deploy.ts",
     "bot": "tsx src/bot/index.ts"

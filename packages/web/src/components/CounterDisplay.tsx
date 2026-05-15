@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from "react";
+import type { Wallet } from "@aztec/aztec.js/wallet";
 import { useAztecWallet } from "../wallet/useAztecWallet";
 import { CONTRACT_ADDRESS, AZTEC_NODE_URL } from "../config";
 import { AztecAddress } from "@aztec/stdlib/aztec-address";
@@ -12,19 +13,21 @@ export function CounterDisplay() {
   const [incrementing, setIncrementing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const registered = useRef(false);
+  // Track which wallet instance the contract was registered against so the
+  // guard resets automatically on disconnect/reconnect (new PXE instance).
+  const registeredWallet = useRef<Wallet | null>(null);
 
   const getContract = useCallback(async () => {
     if (!wallet || !CONTRACT_ADDRESS) return null;
     const contractAddress = AztecAddress.fromString(CONTRACT_ADDRESS);
 
-    // Register the counter contract with the embedded PXE (once, after success)
-    if (!registered.current) {
-      const node = createAztecNodeClient(AZTEC_NODE_URL);
+    // Register the counter contract with the embedded PXE once per wallet instance.
+    if (registeredWallet.current !== wallet) {
+      const node = await createAztecNodeClient(AZTEC_NODE_URL);
       const instance = await node.getContract(contractAddress);
       if (instance) {
         await wallet.registerContract(instance, CounterContract.artifact);
-        registered.current = true;
+        registeredWallet.current = wallet;
       }
     }
 

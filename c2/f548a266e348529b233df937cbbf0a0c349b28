@@ -1,0 +1,21 @@
+packages/web/tsconfig.json
+  s_a15f5d8e3b32e2::t_32e5130cf6a7f2 15-21
+packages/web/vite-plugins/node-builtins-shim.ts
+  s_a15f5d8e3b32e2::t_09344bdb5c2dbb 11-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "c2f548a266e348529b233df937cbbf0a0c349b28",
+  "prompts": {},
+  "sessions": {
+    "s_a15f5d8e3b32e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e72997ac-1f84-4b3d-992d-1da6df2bb0bc",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "xorsal <zorzal@wonderland.xyz>"
+    }
+  }
+}

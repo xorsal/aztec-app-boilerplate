@@ -1,0 +1,25 @@
+packages/web/src/wallet/store.ts
+  s_a15f5d8e3b32e2::t_0acf7262f6879c 43
+  s_a15f5d8e3b32e2::t_6735d1616f2ece 166,168,172-175,178-179,204
+  s_a15f5d8e3b32e2::t_fc1895a8184c26 233,235,243,246,250-251,258-267,274-281,290-298
+  s_a15f5d8e3b32e2::t_c859123df035f2 69
+  s_a15f5d8e3b32e2::t_1cdcc9de1712b0 219,226
+  s_a15f5d8e3b32e2::t_08ed6ce544c33f 317,329-331
+  s_a15f5d8e3b32e2::t_974802b2d7c452 127,129,136,141-147,156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "5ac634c72a88bf63e055dd804ddfade8c6860462",
+  "prompts": {},
+  "sessions": {
+    "s_a15f5d8e3b32e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e72997ac-1f84-4b3d-992d-1da6df2bb0bc",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "xorsal <zorzal@wonderland.xyz>"
+    }
+  }
+}

@@ -8,7 +8,13 @@ import {
 import { NO_FROM } from "@aztec/aztec.js/account";
 import { deployCounter } from "../src/utils.js";
 
-const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || "http://localhost:8080";
+// Precedence: AZTEC_NODE_URL > VITE_AZTEC_NODE_URL > default. This lets the
+// same script run from CLI (AZTEC_NODE_URL) and from the web E2E setup, which
+// may only have VITE_AZTEC_NODE_URL configured.
+const AZTEC_NODE_URL =
+  process.env.AZTEC_NODE_URL ||
+  process.env.VITE_AZTEC_NODE_URL ||
+  "http://localhost:8080";
 
 async function main() {
   console.log("🚀 Deploying Counter contract to Aztec Sandbox");

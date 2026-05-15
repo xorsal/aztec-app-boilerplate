@@ -1,0 +1,19 @@
+packages/web/tsconfig.json
+  s_a15f5d8e3b32e2::t_839ec2ccf56613 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "9369426940ad0478838734edaea5d8ada3972d5c",
+  "prompts": {},
+  "sessions": {
+    "s_a15f5d8e3b32e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e72997ac-1f84-4b3d-992d-1da6df2bb0bc",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "xorsal <zorzal@wonderland.xyz>"
+    }
+  }
+}

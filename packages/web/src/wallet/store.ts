@@ -40,6 +40,7 @@ interface WalletState {
   _discoverySession: DiscoverySession | null;
   _disconnectUnsub: (() => void) | null;
   _provider: WalletProvider | null;
+  _connectionAttemptId: number;
 
   // Actions
   startDiscovery: () => void;
@@ -65,6 +66,7 @@ const initialState = {
   _discoverySession: null,
   _disconnectUnsub: null,
   _provider: null,
+  _connectionAttemptId: 0,
 };
 
 export const useWalletStore = create<WalletState>((set, get) => ({
@@ -122,18 +124,27 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   },
 
   connectExtension: async (provider: WalletProvider) => {
-    const { _discoverySession } = get();
+    const { _discoverySession, _connectionAttemptId } = get();
     _discoverySession?.cancel();
+    const attemptId = _connectionAttemptId + 1;
     set({
       isConnecting: true,
       error: null,
       _provider: provider,
       _discoverySession: null,
       isDiscovering: false,
+      _connectionAttemptId: attemptId,
     });
 
     try {
       const pending = await provider.establishSecureChannel(APP_ID);
+
+      // Bail out if this attempt has been superseded (disconnect/cancel/new connect).
+      if (get()._connectionAttemptId !== attemptId) {
+        pending.cancel();
+        return;
+      }
+
       const emojis = hashToEmoji(pending.verificationHash);
 
       set({
@@ -142,6 +153,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         isDiscovering: false,
       });
     } catch (error: unknown) {
+      if (get()._connectionAttemptId !== attemptId) return;
       set({
         error: error instanceof Error ? error.message : "Key exchange failed",
         isConnecting: false,
@@ -151,12 +163,19 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   },
 
   confirmConnection: async () => {
-    const { pendingConnection, _provider } = get();
+    const { pendingConnection, _provider, _connectionAttemptId } = get();
     if (!pendingConnection) return;
+    const attemptId = _connectionAttemptId;
 
     try {
       const wallet = await pendingConnection.confirm();
+
+      // Bail out if this attempt has been superseded.
+      if (get()._connectionAttemptId !== attemptId) return;
+
       const accounts = await wallet.getAccounts();
+
+      if (get()._connectionAttemptId !== attemptId) return;
 
       if (accounts.length === 0) {
         throw new Error("No accounts available in connected wallet");
@@ -182,6 +201,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         _disconnectUnsub: unsub,
       });
     } catch (error: unknown) {
+      if (get()._connectionAttemptId !== attemptId) return;
       set({
         error:
           error instanceof Error
@@ -196,21 +216,23 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   },
 
   cancelConnection: () => {
-    const { pendingConnection } = get();
+    const { pendingConnection, _connectionAttemptId } = get();
     pendingConnection?.cancel();
     set({
       pendingConnection: null,
       verificationEmojis: null,
       isConnecting: false,
       _provider: null,
+      _connectionAttemptId: _connectionAttemptId + 1,
     });
   },
 
   connectEmbedded: async () => {
     if (get().isConnecting || get().isConnected) return;
 
-    const { _discoverySession } = get();
+    const { _discoverySession, _connectionAttemptId } = get();
     _discoverySession?.cancel();
+    const attemptId = _connectionAttemptId + 1;
     set({
       isConnecting: true,
       error: null,
@@ -218,10 +240,14 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       providers: [],
       _discoverySession: null,
       _provider: null,
+      _connectionAttemptId: attemptId,
     });
 
+    let createdWallet: EmbeddedWallet | null = null;
     try {
       const aztecNode = await createAztecNodeClient(AZTEC_NODE_URL, {});
+
+      if (get()._connectionAttemptId !== attemptId) return;
 
       const wallet = await EmbeddedWallet.create(aztecNode, {
         pxeConfig: {
@@ -229,11 +255,29 @@ export const useWalletStore = create<WalletState>((set, get) => ({
           proverEnabled: false,
         },
       });
+      createdWallet = wallet;
+
+      // Bail out if this attempt has been superseded (and clean up the wallet).
+      if (get()._connectionAttemptId !== attemptId) {
+        await wallet
+          .stop()
+          .catch((err) => console.error("wallet.stop failed", err));
+        createdWallet = null;
+        return;
+      }
 
       const accountManager = await wallet.createSchnorrAccount(
         INITIAL_TEST_SECRET_KEYS[0],
         INITIAL_TEST_ACCOUNT_SALTS[0],
       );
+
+      if (get()._connectionAttemptId !== attemptId) {
+        await wallet
+          .stop()
+          .catch((err) => console.error("wallet.stop failed", err));
+        createdWallet = null;
+        return;
+      }
 
       set({
         wallet,
@@ -243,6 +287,15 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         isConnecting: false,
       });
     } catch (error: unknown) {
+      // If this attempt was superseded, clean up any wallet we created and bail out.
+      if (get()._connectionAttemptId !== attemptId) {
+        if (createdWallet) {
+          await createdWallet
+            .stop()
+            .catch((err) => console.error("wallet.stop failed", err));
+        }
+        return;
+      }
       set({
         error:
           error instanceof Error
@@ -261,6 +314,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       _disconnectUnsub,
       _discoverySession,
       _provider,
+      _connectionAttemptId,
     } = get();
     _disconnectUnsub?.();
     _discoverySession?.cancel();
@@ -272,6 +326,8 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         .catch((err) => console.error("wallet.stop failed", err));
     }
 
-    set({ ...initialState });
+    // Bump the attempt id so any in-flight async connect flows bail out before
+    // calling set() and re-populating the store.
+    set({ ...initialState, _connectionAttemptId: _connectionAttemptId + 1 });
   },
 }));

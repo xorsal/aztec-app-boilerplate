@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { AztecAddress } from "@aztec/stdlib/aztec-address";
@@ -9,9 +10,23 @@ import { CounterContract } from "../../../contracts/artifacts/Counter.js";
 import { createPoller } from "./poller.js";
 import { handleCounterEvent } from "./handler.js";
 
+const DEFAULT_POLL_INTERVAL_MS = 5000;
+
+function parsePollIntervalMs(raw: string | undefined): number {
+  if (raw === undefined) return DEFAULT_POLL_INTERVAL_MS;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.error(
+      `❌ Invalid POLL_INTERVAL_MS=${JSON.stringify(raw)}; expected a positive number`,
+    );
+    process.exit(1);
+  }
+  return parsed;
+}
+
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || "http://localhost:8080";
 const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS;
-const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || "5000");
+const POLL_INTERVAL_MS = parsePollIntervalMs(process.env.POLL_INTERVAL_MS);
 
 async function main() {
   if (!CONTRACT_ADDRESS) {
@@ -52,7 +67,7 @@ async function main() {
 
   // Start polling
   const poller = createPoller(async () => {
-    const value = await counter.methods
+    const { result: value } = await counter.methods
       .get_counter()
       .simulate({ from: botAccount });
     await handleCounterEvent(value);

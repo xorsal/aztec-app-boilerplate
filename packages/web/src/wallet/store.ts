@@ -2,36 +2,252 @@ import { create } from "zustand";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { AztecAddress } from "@aztec/stdlib/aztec-address";
+import { Fr } from "@aztec/aztec.js/fields";
 import {
   INITIAL_TEST_SECRET_KEYS,
   INITIAL_TEST_ACCOUNT_SALTS,
 } from "@aztec/accounts/testing";
-import { AZTEC_NODE_URL } from "../config";
+import { WalletManager } from "@aztec/wallet-sdk/manager";
+import type {
+  WalletProvider,
+  PendingConnection,
+  DiscoverySession,
+} from "@aztec/wallet-sdk/manager";
+import { hashToEmoji } from "@aztec/wallet-sdk/crypto";
+import type { Wallet } from "@aztec/aztec.js/wallet";
+import { AZTEC_NODE_URL, APP_ID, CHAIN_ID, CHAIN_VERSION } from "../config";
+
+type WalletType = "embedded" | "extension";
 
 interface WalletState {
-  wallet: EmbeddedWallet | null;
+  // Connection
+  wallet: Wallet | null;
   address: AztecAddress | null;
-  isConnecting: boolean;
+  walletType: WalletType | null;
   isConnected: boolean;
+  isConnecting: boolean;
   error: string | null;
-  connect: () => Promise<void>;
+
+  // Discovery
+  isDiscovering: boolean;
+  providers: WalletProvider[];
+
+  // Verification (extension only)
+  pendingConnection: PendingConnection | null;
+  verificationEmojis: string | null;
+
+  // Internal refs (not rendered)
+  _discoverySession: DiscoverySession | null;
+  _disconnectUnsub: (() => void) | null;
+  _provider: WalletProvider | null;
+  _connectionAttemptId: number;
+
+  // Actions
+  startDiscovery: () => void;
+  cancelDiscovery: () => void;
+  connectExtension: (provider: WalletProvider) => Promise<void>;
+  confirmConnection: () => Promise<void>;
+  cancelConnection: () => void;
+  connectEmbedded: () => Promise<void>;
   disconnect: () => void;
 }
 
-export const useWalletStore = create<WalletState>((set, get) => ({
+const initialState = {
   wallet: null,
   address: null,
-  isConnecting: false,
+  walletType: null,
   isConnected: false,
+  isConnecting: false,
   error: null,
+  isDiscovering: false,
+  providers: [],
+  pendingConnection: null,
+  verificationEmojis: null,
+  _discoverySession: null,
+  _disconnectUnsub: null,
+  _provider: null,
+  _connectionAttemptId: 0,
+};
 
-  connect: async () => {
-    if (get().isConnecting || get().isConnected) return;
+export const useWalletStore = create<WalletState>((set, get) => ({
+  ...initialState,
 
-    set({ isConnecting: true, error: null });
+  startDiscovery: () => {
+    const state = get();
+    if (state.isDiscovering || state.isConnected) return;
+
+    set({ isDiscovering: true, providers: [], error: null });
+
+    const chainInfo = {
+      chainId: new Fr(CHAIN_ID),
+      version: new Fr(CHAIN_VERSION),
+    };
+
+    const discovery = WalletManager.configure({
+      extensions: { enabled: true },
+    }).getAvailableWallets({
+      chainInfo,
+      appId: APP_ID,
+      timeout: 60000,
+      onWalletDiscovered: (provider: WalletProvider) => {
+        set((s) => ({ providers: [...s.providers, provider] }));
+      },
+    });
+
+    set({ _discoverySession: discovery });
+
+    discovery.done
+      .then(() => {
+        // Only clear discovering if we haven't moved to connecting
+        if (get()._discoverySession === discovery) {
+          set({ isDiscovering: false });
+        }
+      })
+      .catch((err: unknown) => {
+        if (get()._discoverySession !== discovery) return;
+        set({
+          isDiscovering: false,
+          _discoverySession: null,
+          error: err instanceof Error ? err.message : "Wallet discovery failed",
+        });
+      });
+  },
+
+  cancelDiscovery: () => {
+    const { _discoverySession } = get();
+    _discoverySession?.cancel();
+    set({
+      isDiscovering: false,
+      providers: [],
+      _discoverySession: null,
+    });
+  },
+
+  connectExtension: async (provider: WalletProvider) => {
+    const { _discoverySession, _connectionAttemptId } = get();
+    _discoverySession?.cancel();
+    const attemptId = _connectionAttemptId + 1;
+    set({
+      isConnecting: true,
+      error: null,
+      _provider: provider,
+      _discoverySession: null,
+      isDiscovering: false,
+      _connectionAttemptId: attemptId,
+    });
 
     try {
+      const pending = await provider.establishSecureChannel(APP_ID);
+
+      // Bail out if this attempt has been superseded (disconnect/cancel/new connect).
+      if (get()._connectionAttemptId !== attemptId) {
+        pending.cancel();
+        return;
+      }
+
+      const emojis = hashToEmoji(pending.verificationHash);
+
+      set({
+        pendingConnection: pending,
+        verificationEmojis: emojis,
+        isDiscovering: false,
+      });
+    } catch (error: unknown) {
+      if (get()._connectionAttemptId !== attemptId) return;
+      set({
+        error: error instanceof Error ? error.message : "Key exchange failed",
+        isConnecting: false,
+        _provider: null,
+      });
+    }
+  },
+
+  confirmConnection: async () => {
+    const { pendingConnection, _provider, _connectionAttemptId } = get();
+    if (!pendingConnection) return;
+    const attemptId = _connectionAttemptId;
+
+    try {
+      const wallet = await pendingConnection.confirm();
+
+      // Bail out if this attempt has been superseded.
+      if (get()._connectionAttemptId !== attemptId) return;
+
+      const accounts = await wallet.getAccounts();
+
+      if (get()._connectionAttemptId !== attemptId) return;
+
+      if (accounts.length === 0) {
+        throw new Error("No accounts available in connected wallet");
+      }
+
+      const address = accounts[0].item;
+
+      // Listen for disconnects via the provider
+      const unsub = _provider?.onDisconnect(() => {
+        get().disconnect();
+      }) ?? null;
+
+      set({
+        wallet,
+        address,
+        walletType: "extension",
+        isConnected: true,
+        isConnecting: false,
+        pendingConnection: null,
+        verificationEmojis: null,
+        providers: [],
+        _discoverySession: null,
+        _disconnectUnsub: unsub,
+      });
+    } catch (error: unknown) {
+      if (get()._connectionAttemptId !== attemptId) return;
+      set({
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to confirm connection",
+        isConnecting: false,
+        pendingConnection: null,
+        verificationEmojis: null,
+        _provider: null,
+      });
+    }
+  },
+
+  cancelConnection: () => {
+    const { pendingConnection, _connectionAttemptId } = get();
+    pendingConnection?.cancel();
+    set({
+      pendingConnection: null,
+      verificationEmojis: null,
+      isConnecting: false,
+      _provider: null,
+      _connectionAttemptId: _connectionAttemptId + 1,
+    });
+  },
+
+  connectEmbedded: async () => {
+    if (get().isConnecting || get().isConnected) return;
+
+    const { _discoverySession, _connectionAttemptId } = get();
+    _discoverySession?.cancel();
+    const attemptId = _connectionAttemptId + 1;
+    set({
+      isConnecting: true,
+      error: null,
+      isDiscovering: false,
+      providers: [],
+      _discoverySession: null,
+      _provider: null,
+      _connectionAttemptId: attemptId,
+    });
+
+    let createdWallet: EmbeddedWallet | null = null;
+    try {
       const aztecNode = await createAztecNodeClient(AZTEC_NODE_URL, {});
+
+      if (get()._connectionAttemptId !== attemptId) return;
 
       const wallet = await EmbeddedWallet.create(aztecNode, {
         pxeConfig: {
@@ -39,33 +255,79 @@ export const useWalletStore = create<WalletState>((set, get) => ({
           proverEnabled: false,
         },
       });
+      createdWallet = wallet;
 
-      // Register first test account
+      // Bail out if this attempt has been superseded (and clean up the wallet).
+      if (get()._connectionAttemptId !== attemptId) {
+        await wallet
+          .stop()
+          .catch((err) => console.error("wallet.stop failed", err));
+        createdWallet = null;
+        return;
+      }
+
       const accountManager = await wallet.createSchnorrAccount(
         INITIAL_TEST_SECRET_KEYS[0],
         INITIAL_TEST_ACCOUNT_SALTS[0],
       );
 
+      if (get()._connectionAttemptId !== attemptId) {
+        await wallet
+          .stop()
+          .catch((err) => console.error("wallet.stop failed", err));
+        createdWallet = null;
+        return;
+      }
+
       set({
         wallet,
         address: accountManager.address,
+        walletType: "embedded",
         isConnected: true,
         isConnecting: false,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      // If this attempt was superseded, clean up any wallet we created and bail out.
+      if (get()._connectionAttemptId !== attemptId) {
+        if (createdWallet) {
+          await createdWallet
+            .stop()
+            .catch((err) => console.error("wallet.stop failed", err));
+        }
+        return;
+      }
       set({
-        error: error.message || "Failed to connect",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to connect embedded wallet",
         isConnecting: false,
       });
     }
   },
 
   disconnect: () => {
-    set({
-      wallet: null,
-      address: null,
-      isConnected: false,
-      error: null,
-    });
+    const {
+      wallet,
+      walletType,
+      pendingConnection,
+      _disconnectUnsub,
+      _discoverySession,
+      _provider,
+      _connectionAttemptId,
+    } = get();
+    _disconnectUnsub?.();
+    _discoverySession?.cancel();
+    pendingConnection?.cancel();
+    _provider?.disconnect().catch(() => {});
+    if (walletType === "embedded" && wallet) {
+      (wallet as EmbeddedWallet)
+        .stop()
+        .catch((err) => console.error("wallet.stop failed", err));
+    }
+
+    // Bump the attempt id so any in-flight async connect flows bail out before
+    // calling set() and re-populating the store.
+    set({ ...initialState, _connectionAttemptId: _connectionAttemptId + 1 });
   },
 }));

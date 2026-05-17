@@ -1,12 +1,20 @@
+import "dotenv/config";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import {
   INITIAL_TEST_SECRET_KEYS,
   INITIAL_TEST_ACCOUNT_SALTS,
 } from "@aztec/accounts/testing";
+import { NO_FROM } from "@aztec/aztec.js/account";
 import { deployCounter } from "../src/utils.js";
 
-const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || "http://localhost:8080";
+// Precedence: AZTEC_NODE_URL > VITE_AZTEC_NODE_URL > default. This lets the
+// same script run from CLI (AZTEC_NODE_URL) and from the web E2E setup, which
+// may only have VITE_AZTEC_NODE_URL configured.
+const AZTEC_NODE_URL =
+  process.env.AZTEC_NODE_URL ||
+  process.env.VITE_AZTEC_NODE_URL ||
+  "http://localhost:8080";
 
 async function main() {
   console.log("🚀 Deploying Counter contract to Aztec Sandbox");
@@ -19,13 +27,13 @@ async function main() {
   // Create wallet
   console.log("💼 Initializing EmbeddedWallet...");
   const wallet = await EmbeddedWallet.create(aztecNode, {
+    ephemeral: true,
     pxeConfig: {
-      dataDirectory: "pxe-deploy",
       proverEnabled: false,
     },
   });
 
-  // Register the first test account as owner/deployer
+  // Register and deploy the first test account as owner/deployer
   console.log("👤 Setting up deployer account (Test Account #1)...");
   const accountManager = await wallet.createSchnorrAccount(
     INITIAL_TEST_SECRET_KEYS[0],
@@ -33,6 +41,21 @@ async function main() {
   );
   const ownerAddress = accountManager.address;
   console.log(`   Owner/Deployer: ${ownerAddress.toString()}`);
+
+  // Deploy the account contract on-chain (self-deployment from address zero)
+  // Skip if already deployed (existing nullifier means it's already on-chain)
+  console.log("📦 Deploying account contract...");
+  try {
+    const deployMethod = await accountManager.getDeployMethod();
+    await deployMethod.send({ from: NO_FROM });
+    console.log("   Account deployed!");
+  } catch (err: any) {
+    if (err.message?.includes("Existing nullifier")) {
+      console.log("   Account already deployed, skipping.");
+    } else {
+      throw err;
+    }
+  }
 
   // Deploy the Counter contract
   console.log("\n📝 Deploying Counter contract...");
@@ -48,7 +71,6 @@ async function main() {
   console.log(`CONTRACT_ADDRESS=${contract.address.toString()}`);
   console.log(`VITE_CONTRACT_ADDRESS=${contract.address.toString()}`);
   console.log(`VITE_AZTEC_NODE_URL=${AZTEC_NODE_URL}`);
-
   process.exit(0);
 }
 

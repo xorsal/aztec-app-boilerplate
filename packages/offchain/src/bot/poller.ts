@@ -25,6 +25,7 @@ export function createPoller(
 
   return {
     start() {
+      if (running) return;
       running = true;
       console.log(`🔄 Polling started (every ${intervalMs}ms)`);
       poll();

@@ -24,6 +24,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Playwright
+playwright-report/
+
 # PXE data
 pxe-*/
 

@@ -35,14 +35,14 @@ describe("Counter Contract", () => {
   }, 240_000);
 
   it("deploys with correct owner", async () => {
-    const contractOwner = await counter.methods
+    const { result: contractOwner } = await counter.methods
       .get_owner()
       .simulate({ from: owner });
     expect(contractOwner).toStrictEqual(owner);
   });
 
   it("initializes counter at 0", async () => {
-    const value = await counter.methods
+    const { result: value } = await counter.methods
       .get_counter()
       .simulate({ from: owner });
     expect(value).toBe(0n);
@@ -51,7 +51,7 @@ describe("Counter Contract", () => {
   it("increments the counter", async () => {
     await counter.methods.increment().send({ from: owner });
 
-    const value = await counter.methods
+    const { result: value } = await counter.methods
       .get_counter()
       .simulate({ from: owner });
     expect(value).toBe(1n);
@@ -61,7 +61,7 @@ describe("Counter Contract", () => {
     await counter.methods.increment().send({ from: owner });
     await counter.methods.increment().send({ from: owner });
 
-    const value = await counter.methods
+    const { result: value } = await counter.methods
       .get_counter()
       .simulate({ from: owner });
     // 1 from previous test + 2 = 3

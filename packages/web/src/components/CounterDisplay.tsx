@@ -1,7 +1,9 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
+import type { Wallet } from "@aztec/aztec.js/wallet";
 import { useAztecWallet } from "../wallet/useAztecWallet";
-import { CONTRACT_ADDRESS } from "../config";
+import { CONTRACT_ADDRESS, AZTEC_NODE_URL } from "../config";
 import { AztecAddress } from "@aztec/stdlib/aztec-address";
+import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { CounterContract } from "../../../contracts/artifacts/Counter.js";
 
 export function CounterDisplay() {
@@ -11,9 +13,24 @@ export function CounterDisplay() {
   const [incrementing, setIncrementing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Track which wallet instance the contract was registered against so the
+  // guard resets automatically on disconnect/reconnect (new PXE instance).
+  const registeredWallet = useRef<Wallet | null>(null);
+
   const getContract = useCallback(async () => {
     if (!wallet || !CONTRACT_ADDRESS) return null;
     const contractAddress = AztecAddress.fromString(CONTRACT_ADDRESS);
+
+    // Register the counter contract with the embedded PXE once per wallet instance.
+    if (registeredWallet.current !== wallet) {
+      const node = await createAztecNodeClient(AZTEC_NODE_URL);
+      const instance = await node.getContract(contractAddress);
+      if (instance) {
+        await wallet.registerContract(instance, CounterContract.artifact);
+        registeredWallet.current = wallet;
+      }
+    }
+
     return CounterContract.at(contractAddress, wallet);
   }, [wallet]);
 
@@ -24,10 +41,10 @@ export function CounterDisplay() {
     try {
       const contract = await getContract();
       if (!contract) throw new Error("Contract not available");
-      const value = await contract.methods
+      const { result } = await contract.methods
         .get_counter()
         .simulate({ from: address });
-      setCounter(value);
+      setCounter(result);
     } catch (err: any) {
       setError(err.message || "Failed to read counter");
     } finally {
@@ -43,11 +60,10 @@ export function CounterDisplay() {
       const contract = await getContract();
       if (!contract) throw new Error("Contract not available");
       await contract.methods.increment().send({ from: address });
-      // Re-fetch after increment
-      const value = await contract.methods
+      const { result } = await contract.methods
         .get_counter()
         .simulate({ from: address });
-      setCounter(value);
+      setCounter(result);
     } catch (err: any) {
       setError(err.message || "Failed to increment");
     } finally {
@@ -76,10 +92,10 @@ export function CounterDisplay() {
   }
 
   return (
-    <div style={styles.card}>
+    <div style={styles.card} data-testid="counter-card">
       <h2 style={styles.title}>Counter</h2>
 
-      <div style={styles.value}>
+      <div style={styles.value} data-testid="counter-value">
         {counter !== null ? counter.toString() : "—"}
       </div>
 
